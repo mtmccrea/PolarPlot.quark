@@ -14,11 +14,12 @@ PolarView : ValuesView {
 	var <plotUnits;       // units in which the data is plotted
 	var <dataUnits;       // units in which the data is provided by user
 	var <minVal, <maxVal; // min/maxVal, specified in plotUnits
-	var plotMin, plotMax; // min/maxVal, normalized for drawing
 	var plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max
+	var <plotSpec;         // ControlSpec that maps data to plotting range
+	var dataScalar;       // input data, stored as scalar values
+	var dataMin, dataMax; // min/max of input data, in scalar values
 	var <gridVals;        // values at which level grid lines are drawn, in plotUnits
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
-	var gridSpec;
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
@@ -50,16 +51,15 @@ PolarView : ValuesView {
 
 		plotRadius = argPlotRadius;
 
-		gridSpec = switch( plotUnits,
-			\db, {ControlSpec(-70, 0, \db)},
-			\scalar, {ControlSpec(0, 1, \lin)}
-		);
-		minVal = gridSpec.minval;
-		maxVal = gridSpec.maxval;
-		plotMin = 0;
-		plotMax = 1;
-		plotGrid = (plotMin, (plotMax-plotMin/5) .. plotMax);
-		gridVals = plotGrid.collect(gridSpec.unmap(_));
+		plotSpec = switch(plotUnits, \db, {[-70, 0, \lin]}, \scalar, {[0,1]}).asSpec;
+		gridVals = (plotSpec.minval, plotSpec.minval + ((plotSpec.maxval-plotSpec.minval)/5) .. plotSpec.maxval);
+		plotGrid = gridVals.collect(plotSpec.unmap(_));
+		dataMin = plotSpec.minval;
+		dataMax = plotSpec.maxval;
+
+		plotSpec.postln;
+		plotGrid.postln;
+		gridVals.postln;
 
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
 		// this.zeroPos_(zeroPos);
@@ -106,13 +106,10 @@ PolarView : ValuesView {
 		};
 
 		thetas = thetaArray;
-		data = rhoArray;
 
-		dataUnits = units;
-
-		// plotData always stored as scalar values, convert if needed
-		plotData = if (dataUnits == \db, {rhoArray.dbamp}, {rhoArray});
-		this.prStorePlotMinMax;
+		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
+		dataMin = dataScalar.minVal;
+		dataMax = dataScalar.maxVal;
 
 		// re-calc plotData based on min/max
 		this.minMax_(minVal, maxVal, true);
@@ -120,86 +117,111 @@ PolarView : ValuesView {
 
 	// preferred way of setting min and max together
 	// min and max should be set in plotUnits
-	minMax_ { |min, max, refresh=true|
-		this.minVal_(min, false, false);
-		this.maxVal_(max, true, true); // rescale data and refresh
+	plotMinMax_ { |min, max, refresh=true|
+		this.plotMin_(min, false, false);
+		this.plotMax_(max, true, true); // rescale data and refresh
 	}
 
-	// minVal should be set in plotUnits
-	// use minMax_ is setting both min and max
-	minVal_ { |min, rescaleNow=true, refresh=true|
-		minVal = min;
+	plotMin {^plotSpec.minval}
+	plotMax {^plotSpec.maxval}
+
+	// min should be set in plotUnits
+	// use plotMinMax_ is setting both min and max
+	plotMin_ { |min, rescaleNow=true, refresh=true|
+		var plotMin;
+
 		plotMin = if ((min == \auto) or: min.isNil) {
-			plotData.minItem;  // detect max from data
-		} { // max is provided
-			if (plotUnits == \db)
-			{ min.dbamp} // convert plotUnits to scalar if needed
-			{ min }
+			if (plotUnits == \db) {dataMin.ampdb} {dataMin}
+		} {
+			min
 		};
+
+		this.plotSpec_(
+			ControlSpec.newFrom(plotSpec).minval_(plotMin),
+			rescaleNow,
+			refresh
+		);
 
 		rescaleNow.if{this.prRescalePlotData(refresh)};
 	}
 
-	// maxVal should be set in the plotUnits
-	// use minMax_ is setting both min and max
-	maxVal_ { |max, rescaleNow=true, refresh=true|
-		maxVal = max;
+	// max should be set in the plotUnits
+	// use plotMinMax_ is setting both min and max
+	plotMax_ { |max, rescaleNow=true, refresh=true|
+		var plotMax;
+
 		plotMax = if ((max == \auto) or: max.isNil) {
-			plotData.maxItem;  // detect max from data
-		} { // max is provided
-			if (plotUnits == \db)
-			{ max.dbamp} // convert plotUnits to scalar if needed
-			{ max }
+			if (plotUnits == \db) {dataMax.ampdb} {dataMax}
+		} {
+			max
 		};
+
+		this.plotSpec_(
+			ControlSpec.newFrom(plotSpec).maxval_(plotMax),
+			rescaleNow,
+			refresh
+		);
 
 		rescaleNow.if{this.prRescalePlotData(refresh)};
 	}
 
 	// \db or \scalar
-	plotUnits_ { |dbOrScalar|
+	plotUnits_ { |dbOrScalar, min, max|
+		var newMin, newMax;
 		if (plotUnits != dbOrScalar) {
 			plotUnits = dbOrScalar;
 
-			// update min/max
-			minVal !? {
-				this.minVal_(
-					if (plotUnits == \db, {minVal.ampdb}, {minVal.dbamp}),
-					rescaleNow: false, refresh: false  // rescale, refresh later
-				);
+			if (plotUnits == \db) {
+				// switched to \db scaling
+				newMin = min ?? plotSpec.minval.ampdb;
+				newMax = max ?? plotSpec.maxval.ampdb;
+			} { // switched to \scalar scaling from \db
+				newMin = min ?? plotSpec.minval.dbamp;
+				newMax = max ?? plotSpec.maxval.dbamp;
 			};
 
-			maxVal !? {
-				this.maxVal_(
-					if (plotUnits == \db, {maxVal.ampdb}, {maxVal.dbamp}),
-					rescaleNow: false, refresh: false  // rescale, refresh later
-				);
-			};
+			// updates plotData
+			this.plotSpec_(
+				// ControlSpec(newMin, newMax, switch(dbOrScalar, \db, {\db}, \scalar, {\lin})),
+				ControlSpec(newMin, newMax, plotSpec.warp), // spec always linear, even if data is \db
+				true, false // rescale now, don't refresh yet
+			);
 
 			// reset the grid lines to new plotUnits
 			this.levelGridLinesAt_(
-				if (plotUnits == \db, {gridVals.ampdb}, {gridVals.dbamp}),
-				false  // refresh later
+				if (plotUnits == \db, {gridVals.ampdb}, {gridVals.dbamp}).postln,
+				true  // refresh
 			);
-
-			this.prRescalePlotData(refresh:true)
 		};
 	}
 
+	plotSpec_ { |spec, rescaleNow, refresh|
+		plotSpec = spec;
+		// this.levelGridLinesAt_(gridVals, false);
+		"new spec: ".post; spec.postln;
+
+		// TODO: handle switching the plotUnits with the new spec
+
+		rescaleNow.if{this.prRescalePlotData(refresh:true)};
+	}
+
+	// TODO
+	plotWarp_ { |warp|
+		"updating warp not yet implemented".warn;
+		// plotSpec.warp_(warp.asWarp);
+		// update data,
+		// update gridlines
+	}
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
-		var curPlotMin, curPlotMax;
+		dataScalar ?? {"data has not yet been set".warn; ^this};
 
-		plotData ?? {"data has not yet been set".warn; ^this};
-
-		curPlotMin = plotData.minItem;
-		curPlotMax = plotData.maxItem;
-
-		plotData = plotData.linlin(
-			curPlotMin, curPlotMax,
-			plotMin, plotMax
-		);
-		this.prStorePlotMinMax;
-
+		plotData = if (plotUnits == \db) {
+			// dataScalar is scalar, spec is in db, so convert unmap
+			plotSpec.unmap(dataScalar.ampdb);
+		} {
+			plotSpec.unmap(dataScalar);
+		};
 
 		refresh.if{this.refresh};
 	}
@@ -249,13 +271,13 @@ PolarView : ValuesView {
 	levelGridLines_ { |from, every, until, refresh=true|
 		var f, e, u, step;
 		f = switch(from,
-			\max, {plotMax},
-			\min, {plotMin},
+			\max, {this.plotMax},
+			\min, {this.plotMin},
 			{from}
 		);
 		u = switch(until,
-			\max, {plotMax},
-			\min, {plotMin},
+			\max, {this.plotMax},
+			\min, {this.plotMin},
 			{until}
 		);
 		step = if (f<u) {every} {every.neg};
@@ -265,8 +287,14 @@ PolarView : ValuesView {
 
 	// an array of levels for the grid lines, in plotUnits
 	levelGridLinesAt_ { |levelArray, refresh|
-		gridVals = levelArray;
-		plotGrid = if (plotUnits == \db) {gridVals.dbamp} {gridVals};
+		// clip to plotMin/Max
+		gridVals = levelArray.select{ |level|
+			level.inRange(this.plotMin, this.plotMax)
+		};
+		postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals);
+		// map to plot normalization
+		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it
+
 		refresh.if{this.refresh};
 	}
 }
