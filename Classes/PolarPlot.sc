@@ -3,7 +3,7 @@ PolarView : ValuesView {
 	var <bnds, <cen, <minDim, <canvas;
 	// layers
 	var <layers, <background, <plots, <grid, <legend, <title, <note;
-	var thetas, data; // data points and their corresponding theta positions
+	var <thetas, data; // data points and their corresponding theta positions
 
 	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
 	var startAngle, sweepLength, zeroPos;
@@ -14,12 +14,13 @@ PolarView : ValuesView {
 	var <plotUnits;       // units in which the data is plotted
 	var <dataUnits;       // units in which the data is provided by user
 	var <minVal, <maxVal; // min/maxVal, specified in plotUnits
-	var plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max
+	var <plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max
 	var <plotSpec;         // ControlSpec that maps data to plotting range
-	var dataScalar;       // input data, stored as scalar values
+	var <dataScalar;       // input data, stored as scalar values
 	var dataMin, dataMax; // min/max of input data, in scalar values
 	var <gridVals;        // values at which level grid lines are drawn, in plotUnits
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
+	var <>clipDbLow = -150; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
@@ -33,7 +34,7 @@ PolarView : ValuesView {
 	init { |argStartAngle, argSweepLength, argDirection, argZeroPos, argPlotRadius, argPlotUnits|
 		// REQUIRED: in subclass init, initialize drawing layers
 		// initialize layer classes and save them to vars
-		#background, grid, plots, legend, title, note = [
+		#background, plots, grid, legend, title, note = [
 			PolarBackgroundLayer, PolarPlotLayer, PolarGridLayer,
 			PolarLegendLayer, PolarTxtLayer, PolarTxtLayer
 		].collect({ |class|
@@ -108,18 +109,18 @@ PolarView : ValuesView {
 		thetas = thetaArray;
 
 		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
-		dataMin = dataScalar.minVal;
-		dataMax = dataScalar.maxVal;
+		dataMin = dataScalar.minItem;
+		dataMax = dataScalar.maxItem;
 
 		// re-calc plotData based on min/max
-		this.minMax_(minVal, maxVal, true);
+		this.plotMinMax_(minVal, maxVal, true);
 	}
 
 	// preferred way of setting min and max together
 	// min and max should be set in plotUnits
 	plotMinMax_ { |min, max, refresh=true|
 		this.plotMin_(min, false, false);
-		this.plotMax_(max, true, true); // rescale data and refresh
+		this.plotMax_(max, true, refresh); // rescale data and refresh
 	}
 
 	plotMin {^plotSpec.minval}
@@ -131,10 +132,12 @@ PolarView : ValuesView {
 		var plotMin;
 
 		plotMin = if ((min == \auto) or: min.isNil) {
-			if (plotUnits == \db) {dataMin.ampdb} {dataMin}
+			if (plotUnits == \db) {max(dataMin.ampdb, clipDbLow)} {dataMin}
 		} {
 			min
 		};
+
+		"plotMin updated to: ".post; plotMin.postln;
 
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).minval_(plotMin),
@@ -142,6 +145,7 @@ PolarView : ValuesView {
 			refresh
 		);
 
+		this.levelGridLinesAt_(this.gridVals, false);
 		rescaleNow.if{this.prRescalePlotData(refresh)};
 	}
 
@@ -156,12 +160,15 @@ PolarView : ValuesView {
 			max
 		};
 
+		"plotMax updated to: ".post; plotMax.postln;
+
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).maxval_(plotMax),
 			rescaleNow,
 			refresh
 		);
 
+		this.levelGridLinesAt_(this.gridVals, false);
 		rescaleNow.if{this.prRescalePlotData(refresh)};
 	}
 
@@ -215,13 +222,21 @@ PolarView : ValuesView {
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
 		dataScalar ?? {"data has not yet been set".warn; ^this};
+		"rescaling plot data: ".postln;
 
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
-			plotSpec.unmap(dataScalar.ampdb);
+			"plot units are db, unmapping from plotSpec .ampdb".postln;
+			dataScalar.ampdb.postln;
+			plotSpec.copy.unmap(dataScalar.ampdb);
 		} {
-			plotSpec.unmap(dataScalar);
+			"plot units are scalar, unmapping from plotSpec".postln;
+			dataScalar.postln;
+
+			plotSpec.copy.unmap(dataScalar);
 		};
+
+		"rescaled plot data: ".postln; plotData.postln;
 
 		refresh.if{this.refresh};
 	}
@@ -291,9 +306,9 @@ PolarView : ValuesView {
 		gridVals = levelArray.select{ |level|
 			level.inRange(this.plotMin, this.plotMax)
 		};
-		postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals);
+		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it, bug?
+		postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals.round(0.00001), plotGrid.round(0.00001));
 		// map to plot normalization
-		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it
 
 		refresh.if{this.refresh};
 	}
@@ -325,11 +340,24 @@ PolarPlotLayer : ValueViewLayer {
 		^(
 			show:      true,
 			fillColor: Color.white,
-			plotColors: Color.blue,
+			plotColors: [Color.blue],
 		)
 	}
 
-	stroke {}
+	stroke {
+		var maxRad = view.minDim/2*view.plotRadius;
+		Pen.push;
+		Pen.translate(view.cen.x, view.cen.y);
+		view.plotData.do{ |val, i|
+			Pen.lineTo(
+				Polar(val * maxRad, view.prZeroPos + (view.thetas[i] * view.dirFlag)).asPoint
+			);
+		};
+		Pen.lineTo(0@0);
+		Pen.strokeColor_(p.plotColors[0]);
+		Pen.stroke;
+		Pen.pop;
+	}
 
 	fill {}
 }
@@ -345,6 +373,8 @@ PolarGridLayer : ValueViewLayer {
 			latSpacing: -10.dbamp,
 			showLonVals: true,
 			showLatVals: true,
+			txtCollor:   Color.red,
+			txtRound:    0.01,
 		)
 	}
 
@@ -357,6 +387,22 @@ PolarGridLayer : ValueViewLayer {
 			Pen.addArc(view.cen, level * rad, view.prStartAngle, view.prSweepLength);
 		};
 		Pen.stroke;
+
+		if(p.showLatVals) {
+			var str;
+
+			Pen.push;
+			Pen.translate(view.cen.x, view.cen.y);
+
+			view.plotGrid.do{ |level, i|
+				str = view.gridVals[i].asString;
+				Pen.stringRightJustIn(
+					view.gridVals[i].round(p.txtRound).asString,
+					str.bounds.top_(0).right_(level * rad), Font("Helvetica", 12), p.txtCollor
+				)
+			};
+			Pen.pop;
+		};
 		Pen.pop;
 	}
 }
