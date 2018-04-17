@@ -20,6 +20,9 @@ PolarView : ValuesView {
 	var dataMin, dataMax; // min/max of input data, in scalar values
 	var <gridVals;        // values at which level grid lines are drawn, in plotUnits
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
+	var <thetaLines;      // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
+	var <prThetaLines;    // theta positions of longitude lines, in drawing coordinates
+
 	var <>clipDbLow = -150; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
@@ -70,7 +73,7 @@ PolarView : ValuesView {
 		gridVals.postln;
 
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
-
+		this.thetaGridLines_(pi/4, false);
 		this.defineMouseActions;
 	}
 
@@ -296,7 +299,7 @@ PolarView : ValuesView {
 	// in plotUnits, grid lines created from "from",
 	// stepping "every", until reaching "until"
 	levelGridLines_ { |from, every, until, refresh=true|
-		var f, e, u, step;
+		var f, u, step;
 		f = switch(from,
 			\max, {this.plotMax},
 			\min, {this.plotMin},
@@ -318,10 +321,36 @@ PolarView : ValuesView {
 		gridVals = levelArray.select{ |level|
 			level.inRange(this.plotMin, this.plotMax)
 		};
+
 		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it, bug?
 		postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals.round(0.00001), plotGrid.round(0.00001));
 		// map to plot normalization
 
+		refresh.if{this.refresh};
+	}
+
+	// spacing in radians (currently)
+	thetaGridLines_ { |spacing, refresh=true|
+
+		thetaLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
+
+		// avoid duplicate lines at 0, 2pi
+		if ((thetaLines.first % 2pi) == (thetaLines.last % 2pi), {
+			thetaLines = thetaLines.keep(thetaLines.size-1)
+		});
+
+		this.thetaGridLinesAt_(thetaLines, refresh);
+	}
+
+	// an array of thetaPositions, relative to 'zeroPos' and 'direction'
+	thetaGridLinesAt_ { |thetaArray, refresh|
+
+		// clip to range of plot
+		thetaLines = thetaArray.select{ |theta|
+			theta.inRange(startAngle, startAngle+sweepLength)
+		};
+
+		prThetaLines = prZeroPos + (thetaLines * dirFlag);
 		refresh.if{this.refresh};
 	}
 }
@@ -385,7 +414,7 @@ PolarGridLayer : ValueViewLayer {
 			latSpacing:   -10.dbamp,
 			showLonVals:  true,
 			showLatVals:  true,
-			txtCollor:    Color.red,
+			txtColor:    Color.red,
 			txtRound:     0.01,
 			txtPos:       pi/4, // radian angle of latitude labels, relative to zeroPos
 		)
@@ -395,12 +424,31 @@ PolarGridLayer : ValueViewLayer {
 		var rad = view.minDim/2*view.plotRadius;
 
 		Pen.push;
-		Pen.strokeColor_(p.strokeColor);
-		view.plotGrid.do{ |level|
-			Pen.addArc(view.cen, level * rad, view.prStartAngle, view.prSweepLength);
-		};
-		Pen.stroke;
 
+		/* lattitude lines */
+		Pen.strokeColor_(p.strokeColor);
+
+		if (p.showLatLines) {
+			view.plotGrid.do{ |level|
+				Pen.addArc(view.cen, level * rad, view.prStartAngle, view.prSweepLength);
+			};
+			Pen.stroke;
+		};
+
+		if (p.showLonLines) {
+			Pen.push;
+			Pen.translate(view.cen.x, view.cen.y);
+
+			view.prThetaLines.do{ |theta|
+				Pen.moveTo(0@0);
+				Pen.lineTo(Polar(rad, theta).asPoint);
+			};
+			Pen.stroke;
+			Pen.pop;
+		};
+
+
+		/* lattitude labels */
 		if(p.showLatVals) {
 			var str, theta, strBnds, corner, thetaMod;
 
@@ -412,7 +460,7 @@ PolarGridLayer : ValueViewLayer {
 
 			view.plotGrid.do{ |level, i|
 				corner = Polar(level * rad, theta).asPoint;
-				str = view.gridVals[i].asString;
+				str = view.gridVals[i].round(p.txtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -426,11 +474,49 @@ PolarGridLayer : ValueViewLayer {
 				);
 
 				Pen.stringCenteredIn(
-					view.gridVals[i].round(p.txtRound).asString,
+					str,
 					// str.bounds.top_(0).right_(level * rad),
 					// str.bounds.top_(corner.y).right_(corner.x),
 					strBnds,
-					Font("Helvetica", 12), p.txtCollor
+					Font("Helvetica", 12), p.txtColor
+				);
+				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
+			};
+			Pen.pop;
+		};
+		Pen.pop;
+
+		/* longitude labels */
+		if(p.showLonVals) {
+			var str, theta, strBnds, corner, thetaMod;
+
+			Pen.push;
+			Pen.translate(view.cen.x, view.cen.y);
+
+
+			view.prThetaLines.do{ |theta, i|
+				thetaMod = theta % 2pi;
+
+				corner = Polar(rad, theta).asPoint;
+				str = view.thetaLines[i].raddeg.round(p.txtRound).asString;
+				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
+
+				if (thetaMod.inRange(0,pi),
+					{ strBnds.top_(corner.y) },
+					{ strBnds.bottom_(corner.y) }
+				);
+
+				if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
+					{ strBnds.left_(corner.x) },
+					{ strBnds.right_(corner.x) }
+				);
+
+				Pen.stringCenteredIn(
+					str,
+					// str.bounds.top_(0).right_(level * rad),
+					// str.bounds.top_(corner.y).right_(corner.x),
+					strBnds,
+					Font("Helvetica", 12), p.txtColor
 				);
 				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
 			};
