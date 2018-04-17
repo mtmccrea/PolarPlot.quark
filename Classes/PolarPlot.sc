@@ -26,7 +26,7 @@ PolarView : ValuesView {
 	// startAngle position, reference zeroPos, advances in direction, in radians
 	// plotUnits = \scalar or \db
 	*new {
-		|parent, bounds, specs, initVals, startAngle, sweepLength, direction = \cw, zeroPos = 0, plotRadius=0.9, plotUnits = \scalar|
+		|parent, bounds, specs, initVals, startAngle, sweepLength, direction = \cw, zeroPos = \up, plotRadius=0.9, plotUnits = \scalar|
 		^super.new(parent, bounds, specs, initVals)
 		.init(startAngle, sweepLength, direction, zeroPos, plotRadius, plotUnits);
 	}
@@ -44,9 +44,16 @@ PolarView : ValuesView {
 		layers = [background, grid, plots, legend, title, note];
 
 		plotUnits = argPlotUnits;
-		zeroPos = argZeroPos;
 		direction = argDirection;
 		dirFlag = switch (direction, \cw, {1}, \ccw, {-1});
+		zeroPos = if (argZeroPos.isKindOf(Number)) {argZeroPos} {
+			switch(argZeroPos,
+				\up, {0},
+				\down, {pi},
+				\left, {-0.5pi * dirFlag},
+				\right, {0.5pi * dirFlag}
+			)
+		};
 		startAngle = argStartAngle ?? 0; // TODO: revist default start angle, get it from data
 		sweepLength = argSweepLength ?? 2pi; // TODO: revist default sweep length, get it from data
 
@@ -63,9 +70,6 @@ PolarView : ValuesView {
 		gridVals.postln;
 
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
-		// this.zeroPos_(zeroPos);
-		// this.startAngle_(startAngle);
-		// this.sweepLength_(sweepLength);
 
 		this.defineMouseActions;
 	}
@@ -137,7 +141,7 @@ PolarView : ValuesView {
 			min
 		};
 
-		"plotMin updated to: ".post; plotMin.postln;
+		// "plotMin updated to: ".post; plotMin.postln;
 
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).minval_(plotMin),
@@ -160,7 +164,7 @@ PolarView : ValuesView {
 			max
 		};
 
-		"plotMax updated to: ".post; plotMax.postln;
+		// "plotMax updated to: ".post; plotMax.postln;
 
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).maxval_(plotMax),
@@ -219,6 +223,7 @@ PolarView : ValuesView {
 		// update data,
 		// update gridlines
 	}
+
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
 		dataScalar ?? {"data has not yet been set".warn; ^this};
@@ -261,9 +266,16 @@ PolarView : ValuesView {
 
 	// This serves as the reference for start angle
 	// When setting this value, reference 0 up, direction \cw
-	zeroPos_ { |radians=0, refresh=true|
-		zeroPos = radians;
-		prZeroPos = -0.5pi + (radians * dirFlag);
+	zeroPos_ { |radiansOrDir=0, refresh=true|
+		zeroPos = if (radiansOrDir.isKindOf(Number)) {
+			radiansOrDir
+		} {
+			switch(radiansOrDir,
+				\up, {0}, \down, {pi}, \left, {-0.5pi}, \right, {0.5pi}
+			)
+		};
+		// zeroPos = radians;
+		prZeroPos = -0.5pi + (zeroPos * dirFlag);
 		this.startAngle_(startAngle, false);
 		refresh.if{this.refresh};
 	}
@@ -365,16 +377,17 @@ PolarPlotLayer : ValueViewLayer {
 PolarGridLayer : ValueViewLayer {
 	*properties {
 		^(
-			show:      true,
+			show:         true,
 			showLonLines: true,
 			showLatLines: true,
-			strokeColor: Color.gray.alpha_(0.4),
-			lonSpacing: 30.degrad,
-			latSpacing: -10.dbamp,
-			showLonVals: true,
-			showLatVals: true,
-			txtCollor:   Color.red,
-			txtRound:    0.01,
+			strokeColor:  Color.gray.alpha_(0.4),
+			lonSpacing:   30.degrad,
+			latSpacing:   -10.dbamp,
+			showLonVals:  true,
+			showLatVals:  true,
+			txtCollor:    Color.red,
+			txtRound:     0.01,
+			txtPos:       pi/4, // radian angle of latitude labels, relative to zeroPos
 		)
 	}
 
@@ -389,17 +402,37 @@ PolarGridLayer : ValueViewLayer {
 		Pen.stroke;
 
 		if(p.showLatVals) {
-			var str;
+			var str, theta, strBnds, corner, thetaMod;
 
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
+			theta = view.prZeroPos + (p.txtPos * view.dirFlag);
+			thetaMod = theta % 2pi;
+
 			view.plotGrid.do{ |level, i|
+				corner = Polar(level * rad, theta).asPoint;
 				str = view.gridVals[i].asString;
-				Pen.stringRightJustIn(
+				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
+
+				if (thetaMod.inRange(0,pi),
+					{ strBnds.bottom_(corner.y) },
+					{ strBnds.top_(corner.y) }
+				);
+
+				if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
+					{ strBnds.right_(corner.x) },
+					{ strBnds.left_(corner.x) }
+				);
+
+				Pen.stringCenteredIn(
 					view.gridVals[i].round(p.txtRound).asString,
-					str.bounds.top_(0).right_(level * rad), Font("Helvetica", 12), p.txtCollor
-				)
+					// str.bounds.top_(0).right_(level * rad),
+					// str.bounds.top_(corner.y).right_(corner.x),
+					strBnds,
+					Font("Helvetica", 12), p.txtCollor
+				);
+				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
 			};
 			Pen.pop;
 		};
