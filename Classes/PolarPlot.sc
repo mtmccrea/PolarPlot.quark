@@ -23,7 +23,7 @@ PolarView : ValuesView {
 	var <thetaLines;      // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
 	var <prThetaLines;    // theta positions of longitude lines, in drawing coordinates
 
-	var <>clipDbLow = -150; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
+	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
@@ -96,8 +96,8 @@ PolarView : ValuesView {
 		if (grid.p.show) {grid.stroke};
 		if (plots.p.show) {plots.stroke};
 		if (legend.p.show) {legend.stroke};
-		if (title.p.show) {title.stroke};
-		if (note.p.show) {note.stroke};
+		if (title.p.show) {title.fill; title.stroke;};
+		// if (note.p.show) {note.stroke};
 	}
 
 	// TODO: allow 2D arrays array for multiple plots overlaid
@@ -187,7 +187,7 @@ PolarView : ValuesView {
 
 			if (plotUnits == \db) {
 				// switched to \db scaling
-				newMin = min ?? plotSpec.minval.ampdb;
+				newMin = min ?? {max(plotSpec.minval.ampdb, clipDbLow)};
 				newMax = max ?? plotSpec.maxval.ampdb;
 			} { // switched to \scalar scaling from \db
 				newMin = min ?? plotSpec.minval.dbamp;
@@ -409,14 +409,14 @@ PolarGridLayer : ValueViewLayer {
 			show:         true,
 			showLonLines: true,
 			showLatLines: true,
-			strokeColor:  Color.gray.alpha_(0.4),
-			lonSpacing:   30.degrad,
-			latSpacing:   -10.dbamp,
+			strokeColor:  Color.gray.alpha_(0.4), // grid color
 			showLonVals:  true,
 			showLatVals:  true,
-			txtColor:    Color.red,
-			txtRound:     0.01,
-			txtPos:       pi/4, // radian angle of latitude labels, relative to zeroPos
+			latTxtColor:  Color.gray.alpha_(0.3),
+			lonTxtColor:  Color.black,
+			latTxtRound:  0.01,
+			lonTxtRound:  1,
+			latTxtPos:    pi/4, // radian angle of latitude labels, relative to zeroPos
 		)
 	}
 
@@ -455,12 +455,12 @@ PolarGridLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
-			theta = view.prZeroPos + (p.txtPos * view.dirFlag);
+			theta = view.prZeroPos + (p.latTxtPos * view.dirFlag);
 			thetaMod = theta % 2pi;
 
 			view.plotGrid.do{ |level, i|
 				corner = Polar(level * rad, theta).asPoint;
-				str = view.gridVals[i].round(p.txtRound).asString;
+				str = view.gridVals[i].round(p.latTxtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -478,7 +478,7 @@ PolarGridLayer : ValueViewLayer {
 					// str.bounds.top_(0).right_(level * rad),
 					// str.bounds.top_(corner.y).right_(corner.x),
 					strBnds,
-					Font("Helvetica", 12), p.txtColor
+					Font("Helvetica", 12), p.latTxtColor
 				);
 				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
 			};
@@ -498,7 +498,7 @@ PolarGridLayer : ValueViewLayer {
 				thetaMod = theta % 2pi;
 
 				corner = Polar(rad, theta).asPoint;
-				str = view.thetaLines[i].raddeg.round(p.txtRound).asString;
+				str = view.thetaLines[i].raddeg.round(p.lonTxtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -516,7 +516,7 @@ PolarGridLayer : ValueViewLayer {
 					// str.bounds.top_(0).right_(level * rad),
 					// str.bounds.top_(corner.y).right_(corner.x),
 					strBnds,
-					Font("Helvetica", 12), p.txtColor
+					Font("Helvetica", 12), p.lonTxtColor
 				);
 				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
 			};
@@ -541,9 +541,37 @@ PolarTxtLayer : ValueViewLayer {
 	*properties {
 		^(
 			show:      true,
-			fillColor: Color.white
+			fillColor: Color.white,
+			txtColor:  Color.black,
+			align:     \top,
+			margin:    5,
+			height:    0.07,
+			width:     0.9,
+			txt:       "plot",
 		)
 	}
-	stroke {}
-	fill {}
+
+	stroke {
+		var r, m;
+		m = p.margin;
+
+		Pen.push;
+		r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		Pen.strokeColor_(p.txtColor);
+		Pen.stringCenteredIn(p.txt, r, Font("Helvetica", 15));
+		Pen.stroke;
+		Pen.pop;
+	}
+
+	fill {
+		var r, m;
+		m = p.margin;
+
+		Pen.push;
+		r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		Pen.fillColor_(p.fillColor);
+		Pen.fillRect(r);
+		Pen.fill;
+		Pen.pop;
+	}
 }
