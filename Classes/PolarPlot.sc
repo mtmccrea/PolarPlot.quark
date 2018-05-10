@@ -2,7 +2,7 @@ PolarView : ValuesView {
 	// set in drawFunc, for access by drawing layers
 	var <bnds, <cen, <minDim, <canvas;
 	// layers
-	var <layers, <background, <plots, <grid, <legend, <title, <note;
+	var <background, <plots, <grid, <legend, <title, <note;
 	var <thetas, data; // data points and their corresponding theta positions
 
 	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
@@ -14,9 +14,9 @@ PolarView : ValuesView {
 	var <plotUnits;       // units in which the data is plotted
 	var <dataUnits;       // units in which the data is provided by user
 	var <minVal, <maxVal; // min/maxVal, specified in plotUnits
-	var <plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max
-	var <plotSpec;         // ControlSpec that maps data to plotting range
-	var <dataScalar;       // input data, stored as scalar values
+	var <plotData;        // data to plot, stored as scalar values, normalized to plotMin/Max
+	var <plotSpec;        // ControlSpec that maps data to plotting range
+	var <dataScalar;      // input data, stored as scalar values
 	var dataMin, dataMax; // min/max of input data, in scalar values
 	var <gridVals;        // values at which level grid lines are drawn, in plotUnits
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
@@ -35,16 +35,18 @@ PolarView : ValuesView {
 	}
 
 	init { |argStartAngle, argSweepLength, argDirection, argZeroPos, argPlotRadius, argPlotUnits|
+
 		// REQUIRED: in subclass init, initialize drawing layers
-		// initialize layer classes and save them to vars
-		#background, plots, grid, legend, title, note = [
+		layers = [
 			PolarBackgroundLayer, PolarPlotLayer, PolarGridLayer,
 			PolarLegendLayer, PolarTxtLayer, PolarTxtLayer
 		].collect({ |class|
 			class.new(this, class.properties)
 		});
-		// convenience variable to access a list of the layers
-		layers = [background, grid, plots, legend, title, note];
+
+		// unpack the layers list into individual variables
+		#background, plots, grid, legend, title, note = layers;
+		// layers = [background, grid, plots, legend, title, note];
 
 		plotUnits = argPlotUnits;
 		direction = argDirection;
@@ -100,27 +102,40 @@ PolarView : ValuesView {
 		// if (note.p.show) {note.stroke};
 	}
 
-	// TODO: allow 2D arrays array for multiple plots overlaid
-	data_ { |thetaArray, rhoArray, units = \scalar|
+	// TODO: How to handle negative values? (e.g. phase of figure of 8 polar pattern...)
+	//    always .abs?
+	//    through origin? if through origin, alter color based on sign/phase?
+	data_ { |thetaArray, rhoArray, units = \scalar, refresh=true|
+		var shapetest;
 
-		if (thetaArray.size != rhoArray.size) {
+		// support 2D arrays: force into shape [1, datasize], i.e. [[1,2,3],[1,3,7]]
+		if (rhoArray.shape.size == 1) {
+			rhoArray = [rhoArray];
+		};
+		// check that multiple datasets are the same size
+		// TODO: don't make this a requirement
+		shapetest = rhoArray.collect(_.size).every(_ == rhoArray[0].size);
+		shapetest.not.if{warn(format("Size of datasets are mismatched: %", rhoArray.collect(_.size)))};
+
+
+		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
+		dataMin = dataScalar.flat.minItem;
+		dataMax = dataScalar.flat.maxItem;
+
+		if (thetaArray.size != rhoArray[0].size) {
 			// thetaArray assumed to be breakpoints (likely start/end points)
 			// create an "envelope" from breakpoints and generate theta values
 			// for each rho value
 			var thetaEnv, dataStep;
-			dataStep = (rhoArray.size - 1).reciprocal;
+			dataStep = (rhoArray[0].size - 1).reciprocal;
 			thetaEnv = Env(thetaArray, (thetaArray.size-1).reciprocal, \lin);
-			thetaArray = rhoArray.collect{|val, i| thetaEnv.at(dataStep*i)};
+			thetaArray = rhoArray[0].collect{|val, i| thetaEnv.at(dataStep*i)};
 		};
 
 		thetas = thetaArray;
 
-		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
-		dataMin = dataScalar.minItem;
-		dataMax = dataScalar.maxItem;
-
 		// re-calc plotData based on min/max
-		this.plotMinMax_(minVal, maxVal, true);
+		this.plotMinMax_(minVal, maxVal, refresh);
 	}
 
 	// preferred way of setting min and max together
@@ -235,11 +250,11 @@ PolarView : ValuesView {
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
 			"plot units are db, unmapping from plotSpec .ampdb".postln;
-			dataScalar.ampdb.postln;
+			// dataScalar.ampdb.postln;
 			plotSpec.copy.unmap(dataScalar.ampdb);
 		} {
 			"plot units are scalar, unmapping from plotSpec".postln;
-			dataScalar.postln;
+			// dataScalar.postln;
 
 			plotSpec.copy.unmap(dataScalar);
 		};
@@ -287,6 +302,9 @@ PolarView : ValuesView {
 	startAngle_ {|radians=0, refresh=true|
 		startAngle = radians;
 		prStartAngle = prZeroPos + (startAngle*dirFlag);
+		thetaLines !? {
+			this.thetaGridLinesAt_(thetaLines, false); // reset the thera grid lines
+		};
 		refresh.if{this.refresh};
 	}
 
@@ -382,21 +400,34 @@ PolarPlotLayer : ValueViewLayer {
 			show:      true,
 			fillColor: Color.white,
 			plotColors: [Color.blue],
+			strokeWidth: 2,
 		)
 	}
 
 	stroke {
-		var maxRad = view.minDim/2*view.plotRadius;
+		var zeroPos, dirFlag, maxRad;
+		zeroPos = view.prZeroPos;
+		dirFlag = view.dirFlag;
+		maxRad = view.minDim/2*view.plotRadius;
+
 		Pen.push;
 		Pen.translate(view.cen.x, view.cen.y);
-		view.plotData.do{ |val, i|
-			Pen.lineTo(
-				Polar(val * maxRad, view.prZeroPos + (view.thetas[i] * view.dirFlag)).asPoint
+
+		view.plotData.do{ |dataset, j|
+			Pen.push;
+			Pen.moveTo(
+				Polar(dataset[0] * maxRad, zeroPos + (view.thetas[0] * dirFlag)).asPoint
 			);
+			dataset.do{|val, i|
+				Pen.lineTo(
+					Polar(val * maxRad, zeroPos + (view.thetas[i] * dirFlag)).asPoint
+				);
+			};
+			Pen.strokeColor_(p.plotColors.asArray.wrapAt(j));
+			Pen.width_(p.strokeWidth);
+			Pen.stroke;
+			Pen.pop;
 		};
-		Pen.lineTo(0@0);
-		Pen.strokeColor_(p.plotColors[0]);
-		Pen.stroke;
 		Pen.pop;
 	}
 
@@ -417,6 +448,7 @@ PolarGridLayer : ValueViewLayer {
 			latTxtRound:  0.01,
 			lonTxtRound:  1,
 			latTxtPos:    pi/4, // radian angle of latitude labels, relative to zeroPos
+			strokeWidth:  1,
 		)
 	}
 
@@ -427,6 +459,7 @@ PolarGridLayer : ValueViewLayer {
 
 		/* lattitude lines */
 		Pen.strokeColor_(p.strokeColor);
+		Pen.width_(p.strokeWidth);
 
 		if (p.showLatLines) {
 			view.plotGrid.do{ |level|
@@ -546,8 +579,9 @@ PolarTxtLayer : ValueViewLayer {
 			align:     \top,
 			margin:    5,
 			height:    0.07,
-			width:     0.9,
+			width:     0.8,
 			txt:       "plot",
+			font:      Font("Helvetica", 15),
 		)
 	}
 
@@ -557,8 +591,7 @@ PolarTxtLayer : ValueViewLayer {
 
 		Pen.push;
 		r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
-		Pen.strokeColor_(p.txtColor);
-		Pen.stringCenteredIn(p.txt, r, Font("Helvetica", 15));
+		Pen.stringCenteredIn(p.txt, r, p.font, p.txtColor);
 		Pen.stroke;
 		Pen.pop;
 	}
