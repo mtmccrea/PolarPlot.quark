@@ -97,7 +97,7 @@ PolarView : ValuesView {
 		if (background.p.show) {background.fill};
 		if (grid.p.show) {grid.stroke};
 		if (plots.p.show) {plots.stroke};
-		if (legend.p.show) {legend.stroke};
+		if (legend.p.show) {legend.fill; legend.stroke};
 		if (title.p.show) {title.fill; title.stroke;};
 		// if (note.p.show) {note.stroke};
 	}
@@ -560,14 +560,150 @@ PolarGridLayer : ValueViewLayer {
 }
 
 PolarLegendLayer : ValueViewLayer {
+	var nElem, txtRects, lRect, labels, font;
+	var updated = false;
+
 	*properties {
 		^(
-			show:      true,
-			fillColor: Color.white
+			show:        true,
+			fillColor:   Color.white,
+			txtColor:    Color.gray,
+			align:      \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
+			margin:      10,           // margin between legend and view's edge
+			pad:         5,            // padding between text and legend border
+			layout:      \vertical,    // horizontal, vertical
+			lineLength:  15,           // length of sample plot line
+			lineSpacing: 4,            // spacing between sample line and text
+			font:        Font("Helvetica"),
+			fontSize:    14,
+			labels:      ["plot 1"],
 		)
 	}
-	stroke {}
-	fill {}
+
+	stroke {
+		var lineCols, cursor, h_2, yHop, stX;
+		"nElem in ".post; nElem.postln;
+		block {|break|
+
+			lRect ?? {break.()}; // bail if background hasn't been calculated
+			Pen.push;
+
+			cursor = lRect.leftTop + (p.pad@p.pad);
+			Pen.translate(view.cen.x, view.cen.y);    // set 0,0 to center
+			Pen.translate(cursor.x, cursor.y);        // translate to top left of legend background rect
+			cursor = 0@0; // reset cursor
+
+			Pen.width = view.plots.strokeWidth;
+			lineCols = view.plots.plotColors;
+			h_2 = txtRects[0].height/2;
+
+			switch(p.layout,
+				\horizontal, { // w = pad-lineLength-lineSpacing-text length-pad-lineLength-lineSpacing-text length-pad, etc
+					Pen.push;
+					nElem.do{ |i|
+						Pen.strokeColor_(lineCols.wrapAt(i));
+
+						Pen.moveTo(Point(cursor.x,cursor.y+h_2));
+						cursor.x = cursor.x + p.lineLength;
+						Pen.lineTo(Point(cursor.x,cursor.y+h_2));
+						Pen.stroke;
+
+						cursor.x = cursor.x + p.lineSpacing;
+						Pen.stringLeftJustIn(
+							labels[i],
+							txtRects[i].left_(cursor.x).top_(cursor.y),
+							font,
+							p.txtColor
+						);
+						cursor.x = cursor.x + txtRects[i].width + p.pad;
+					};
+					Pen.pop;
+				},
+				\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
+					Pen.push;
+					yHop = txtRects[0].height+ p.pad;
+					stX = cursor.x;
+					nElem.do{ |i|
+						Pen.strokeColor_(lineCols.wrapAt(i));
+
+						Pen.moveTo(Point(stX,cursor.y+h_2));
+						cursor.x = stX + p.lineLength;
+						Pen.lineTo(Point(cursor.x,cursor.y+h_2));
+						Pen.stroke;
+
+						cursor.x = cursor.x + p.lineSpacing;
+						Pen.stringLeftJustIn(
+							labels[i],
+							txtRects[i].left_(cursor.x).top_(cursor.y),
+							font,
+							p.txtColor
+						);
+						cursor.x = stX; // jump back to starting x
+						cursor.y = cursor.y + yHop;
+					};
+					Pen.pop;
+				}
+			);
+
+			Pen.pop;
+		};
+	}
+
+	fill {
+		var sumW, sumH, pad;
+
+		nElem = view.plotData.size;
+		if(nElem > 0) {
+			Pen.push;
+			Pen.translate(view.cen.x, view.cen.y);
+
+			labels = p.labels.asArray.extend(nElem, " - "); // make sure there are labels for all plots
+			font = p.font.size_(p.fontSize);
+			txtRects = labels.collect(_.bounds(font));
+			pad = p.pad;
+
+			switch(p.layout,
+				\horizontal, { // w = pad-lineLength-lineSpacing-textlength-pad-lineLength-lineSpacing-text length-pad, etc
+					sumW = (pad + p.lineLength + p.lineSpacing * nElem) + txtRects.collect(_.width).sum + pad;
+					sumH = (pad * 2) + txtRects[0].height;
+				},
+				\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
+					sumW = pad + p.lineLength + p.lineSpacing + txtRects.collect(_.width).maxItem + pad;
+					sumH = pad + (txtRects[0].height + pad * nElem);
+				}
+			);
+
+			lRect = [0,0, sumW, sumH].asRect.center_(0@0);
+
+			switch(p.align,
+				\right, {lRect.right = view.bnds.width/2 - p.margin},
+				\left, {lRect.left = view.bnds.width/2.neg + p.margin},
+				\top, {lRect.top = view.bnds.height/2.neg + p.margin},
+				\bottom, {lRect.bottom = view.bnds.height/2 - p.margin},
+				\topRight, {
+					lRect.top = view.bnds.height/2.neg + p.margin;
+					lRect.right = view.bnds.width/2 - p.margin;
+				},
+				\topLeft, {
+					lRect.top = view.bnds.height/2.neg + p.margin;
+					lRect.left = view.bnds.width/2.neg + p.margin;
+				},
+				\bottomRight, {
+					lRect.bottom = view.bnds.height/2 - p.margin;
+					lRect.right = view.bnds.width/2 - p.margin;
+				},
+				\bottomLeft, {
+					lRect.bottom = view.bnds.height/2 - p.margin;
+					lRect.left = view.bnds.width/2.neg + p.margin;
+				},
+			);
+
+			Pen.fillColor_(p.fillColor);
+			Pen.fillRect(lRect);
+			Pen.fill;
+			Pen.pop;
+		}
+	}
 }
 
 PolarTxtLayer : ValueViewLayer {
