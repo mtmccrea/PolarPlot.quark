@@ -577,6 +577,9 @@ PolarLegendLayer : ValueViewLayer {
 			font:        Font("Helvetica"),
 			fontSize:    14,
 			labels:      ["plot 1"],
+			showBorder:  true,
+			borderColor: Color.gray,
+			borderWidth: 2,
 		)
 	}
 
@@ -586,10 +589,19 @@ PolarLegendLayer : ValueViewLayer {
 		block {|break|
 
 			lRect ?? {break.()}; // bail if background hasn't been calculated
+
 			Pen.push;
 
-			cursor = lRect.leftTop + (p.pad@p.pad);
 			Pen.translate(view.cen.x, view.cen.y);    // set 0,0 to center
+
+			if (p.showBorder) {
+				Pen.width_(p.borderWidth);
+				Pen.strokeColor_(p.borderColor);
+				Pen.addRect(lRect);
+				Pen.stroke;
+			};
+
+			cursor = lRect.leftTop + (p.pad@p.pad);
 			Pen.translate(cursor.x, cursor.y);        // translate to top left of legend background rect
 			cursor = 0@0; // reset cursor
 
@@ -707,39 +719,52 @@ PolarLegendLayer : ValueViewLayer {
 }
 
 PolarTxtLayer : ValueViewLayer {
+	var font, txtRect, bgRect;
+
 	*properties {
 		^(
-			show:      true,
-			fillColor: Color.white,
-			txtColor:  Color.black,
-			align:     \top,
-			margin:    5,
-			height:    0.07,
-			width:     0.8,
-			txt:       "plot",
-			font:      Font("Helvetica", 15),
+			show:        true,
+			fillColor:   Color.white,
+			txtColor:    Color.black,
+			align:       \top,
+			margin:      15,
+			pad:         15,
+			txt:         "plot",
+			font:        Font("Helvetica"),
+			fontSize:    18,
+			showBorder:  true,
+			borderColor: Color.gray,
+			borderWidth: 2,
 		)
 	}
 
 	stroke {
-		var r, m;
-		m = p.margin;
-
 		Pen.push;
-		r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
-		Pen.stringCenteredIn(p.txt, r, p.font, p.txtColor);
+
+		if (p.showBorder) {
+			Pen.width_(p.borderWidth);
+			Pen.strokeColor_(p.borderColor);
+			Pen.addRect(bgRect);
+			Pen.stroke;
+		};
+
+		// r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		txtRect = txtRect.center_(bgRect.center);
+		Pen.stringCenteredIn(p.txt, txtRect, font, p.txtColor);
 		Pen.stroke;
 		Pen.pop;
 	}
 
 	fill {
-		var r, m;
-		m = p.margin;
+		font = p.font.size_(p.fontSize);
+		txtRect = p.txt.bounds(p.font.size_(p.fontSize));
+		bgRect = txtRect + [0, 0, p.pad, p.pad].asRect;
 
 		Pen.push;
-		r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		// r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		bgRect = bgRect.center_(view.bnds.width/2 @ (bgRect.height/2 + p.margin));
 		Pen.fillColor_(p.fillColor);
-		Pen.fillRect(r);
+		Pen.fillRect(bgRect);
 		Pen.fill;
 		Pen.pop;
 	}
