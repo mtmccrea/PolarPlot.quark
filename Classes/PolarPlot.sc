@@ -413,6 +413,11 @@ PolarPlotLayer : ValueViewLayer {
 		Pen.push;
 		Pen.translate(view.cen.x, view.cen.y);
 
+		// make sure a single color is held in an array
+		if (p.plotColors.isKindOf(Color)) {
+			p.plotColors = [p.plotColors]
+		};
+
 		view.plotData.do{ |dataset, j|
 			Pen.push;
 			Pen.moveTo(
@@ -669,7 +674,13 @@ PolarLegendLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
+			p.labels.postln;
+			if (p.labels.isKindOf(String)) {
+				p.labels = [p.labels]
+			};
 			labels = p.labels.asArray.extend(nElem, " - "); // make sure there are labels for all plots
+			labels.postln;
+
 			font = p.font.size_(p.fontSize);
 			txtRects = labels.collect(_.bounds(font));
 			pad = p.pad;
@@ -757,7 +768,17 @@ PolarTxtLayer : ValueViewLayer {
 
 	fill {
 		font = p.font.size_(p.fontSize);
-		txtRect = p.txt.bounds(p.font.size_(p.fontSize));
+		// String:-bounds doesn't account for newlines, so add it up
+		txtRect = if (p.txt.contains("\n")) {
+			var rects, w, h;
+			rects = p.txt.split($\n).collect(_.bounds(font));
+			w = rects.collect(_.width).maxItem;
+			h = rects[0].height * rects.size;
+			[0,0,w,h].asRect
+		} {
+			p.txt.bounds(font)
+		};
+
 		bgRect = txtRect + [0, 0, p.pad, p.pad].asRect;
 
 		Pen.push;
