@@ -106,7 +106,7 @@ PolarView : ValuesView {
 	//    always .abs?
 	//    through origin? if through origin, alter color based on sign/phase?
 	data_ { |thetaArray, rhoArray, units = \scalar, refresh=true|
-		var shapetest;
+		var shapetest, dataSizes;
 
 		// support 2D arrays: force into shape [1, datasize], i.e. [[1,2,3],[1,3,7]]
 		if (rhoArray.shape.size == 1) {
@@ -114,22 +114,35 @@ PolarView : ValuesView {
 		};
 		// check that multiple datasets are the same size
 		// TODO: don't make this a requirement
-		shapetest = rhoArray.collect(_.size).every(_ == rhoArray[0].size);
-		shapetest.not.if{warn(format("Size of datasets are mismatched: %", rhoArray.collect(_.size)))};
+		dataSizes = rhoArray.collect(_.size);
+		shapetest = dataSizes.every(_ == rhoArray[0].size);
+		shapetest.not.if{
+			warn(format("Size of datasets are mismatched: %, extending datasets for identical sizes", rhoArray.collect(_.size)));
+			// stutter the last values to make all array sizes equal
+			rhoArray = rhoArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
+		};
 
 
 		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
 		dataMin = dataScalar.flat.minItem;
 		dataMax = dataScalar.flat.maxItem;
 
-		if (thetaArray.size != rhoArray[0].size) {
-			// thetaArray assumed to be breakpoints (likely start/end points)
-			// create an "envelope" from breakpoints and generate theta values
-			// for each rho value
-			var thetaEnv, dataStep;
-			dataStep = (rhoArray[0].size - 1).reciprocal;
-			thetaEnv = Env(thetaArray, (thetaArray.size-1).reciprocal, \lin);
-			thetaArray = rhoArray[0].collect{|val, i| thetaEnv.at(dataStep*i)};
+		if (thetaArray.shape.size == 1) {
+			"wrapping thetaArray in an array".postln;
+			thetaArray = [thetaArray];
+		};
+
+		thetaArray.do{ |thetaArr, i|
+
+			if (thetaArr.size != rhoArray[i].size) {
+				// thetaArray assumed to be breakpoints (likely start/end points)
+				// create an "envelope" from breakpoints and generate theta values
+				// for each rho value
+				var thetaEnv, dataStep;
+				dataStep = (rhoArray[i].size - 1).reciprocal;
+				thetaEnv = Env(thetaArr, (thetaArr.size-1).reciprocal, \lin);
+				thetaArray[i] = rhoArray[i].collect{|val, j| thetaEnv.at(dataStep*j)};
+			};
 		};
 
 		thetas = thetaArray;
@@ -418,17 +431,27 @@ PolarPlotLayer : ValueViewLayer {
 			p.plotColors = [p.plotColors]
 		};
 
-		view.plotData.do{ |dataset, j|
+		view.plotData.do{ |dataset, i|
 			Pen.push;
 			Pen.moveTo(
-				Polar(dataset[0] * maxRad, zeroPos + (view.thetas[0] * dirFlag)).asPoint
+				Polar(
+					dataset[0] * maxRad,
+					// wrapAt in case number of theta arrays is mismatched with rhoArrays
+					// e.g. one theta array is provided, like [0,2pi], for multiple datasets
+					zeroPos + (view.thetas.wrapAt(i)[0] * dirFlag)
+				).asPoint
 			);
-			dataset.do{|val, i|
+			dataset.do{|val, j|
 				Pen.lineTo(
-					Polar(val * maxRad, zeroPos + (view.thetas[i] * dirFlag)).asPoint
+					Polar(
+						val * maxRad,
+						// wrapAt in case number of theta arrays is mismatched with rhoArrays
+						// e.g. one theta array is provided, like [0,2pi], for multiple datasets
+						zeroPos + (view.thetas.wrapAt(i)[j] * dirFlag)
+					).asPoint
 				);
 			};
-			Pen.strokeColor_(p.plotColors.asArray.wrapAt(j));
+			Pen.strokeColor_(p.plotColors.asArray.wrapAt(i));
 			Pen.width_(p.strokeWidth);
 			Pen.stroke;
 			Pen.pop;
@@ -452,7 +475,9 @@ PolarGridLayer : ValueViewLayer {
 			lonTxtColor:  Color.black,
 			latTxtRound:  0.01,
 			lonTxtRound:  1,
+			lonTxtWrap:   [0, 2pi],
 			latTxtPos:    pi/4, // radian angle of latitude labels, relative to zeroPos
+			lonTxtOffset: 0.065, // percentage of the radius
 			strokeWidth:  1,
 		)
 	}
@@ -526,7 +551,7 @@ PolarGridLayer : ValueViewLayer {
 
 		/* longitude labels */
 		if(p.showLonVals) {
-			var str, theta, strBnds, corner, thetaMod;
+			var str, strVal, theta, strBnds, txtCen, thetaMod; //corner,
 
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
@@ -535,19 +560,22 @@ PolarGridLayer : ValueViewLayer {
 			view.prThetaLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
-				corner = Polar(rad, theta).asPoint;
-				str = view.thetaLines[i].raddeg.round(p.lonTxtRound).asString;
+				// corner = Polar(rad, theta).asPoint;
+				txtCen = Polar(rad+(rad*p.lonTxtOffset), theta).asPoint;
+				strVal = view.thetaLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
+				str = if(strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
+				strBnds = strBnds.center_(txtCen);
 
-				if (thetaMod.inRange(0,pi),
-					{ strBnds.top_(corner.y) },
-					{ strBnds.bottom_(corner.y) }
-				);
-
-				if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
-					{ strBnds.left_(corner.x) },
-					{ strBnds.right_(corner.x) }
-				);
+				// if (thetaMod.inRange(0,pi),
+				// 	{ strBnds.top_(corner.y) },
+				// 	{ strBnds.bottom_(corner.y) }
+				// );
+				//
+				// if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
+				// 	{ strBnds.left_(corner.x) },
+				// 	{ strBnds.right_(corner.x) }
+				// );
 
 				Pen.stringCenteredIn(
 					str,
