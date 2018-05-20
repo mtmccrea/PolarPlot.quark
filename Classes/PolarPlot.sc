@@ -1,8 +1,16 @@
+/*
+TODO
+- offset plot from title so they don't overlap
+- \circle data points, for the option of re-creating rE-style directivity displays
+- invert values so that minimum values are at the radius, max values are at the center
+- support a notion of phase, as in a figure-of-eight mic pattern
+*/
+
 PolarView : ValuesView {
 	// set in drawFunc, for access by drawing layers
 	var <bnds, <cen, <minDim, <canvas;
 	// layers
-	var <background, <plots, <grid, <legend, <title, <note;
+	var <background, <plots, <grid, <legend, <title;
 	var <thetas, data; // data points and their corresponding theta positions
 
 	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
@@ -39,14 +47,13 @@ PolarView : ValuesView {
 		// REQUIRED: in subclass init, initialize drawing layers
 		layers = [
 			PolarBackgroundLayer, PolarPlotLayer, PolarGridLayer,
-			PolarLegendLayer, PolarTxtLayer, PolarTxtLayer
+			PolarLegendLayer, PolarTitleLayer
 		].collect({ |class|
 			class.new(this, class.properties)
 		});
 
 		// unpack the layers list into individual variables
-		#background, plots, grid, legend, title, note = layers;
-		// layers = [background, grid, plots, legend, title, note];
+		#background, plots, grid, legend, title = layers;
 
 		plotUnits = argPlotUnits;
 		direction = argDirection;
@@ -59,7 +66,7 @@ PolarView : ValuesView {
 				\right, {0.5pi * dirFlag}
 			)
 		};
-		startAngle = argStartAngle ?? 0; // TODO: revist default start angle, get it from data
+		startAngle = argStartAngle ?? 0;     // TODO: revist default start angle, get it from data
 		sweepLength = argSweepLength ?? 2pi; // TODO: revist default sweep length, get it from data
 
 		plotRadius = argPlotRadius;
@@ -69,10 +76,6 @@ PolarView : ValuesView {
 		plotGrid = gridVals.collect(plotSpec.unmap(_));
 		dataMin = plotSpec.minval;
 		dataMax = plotSpec.maxval;
-
-		plotSpec.postln;
-		plotGrid.postln;
-		gridVals.postln;
 
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
 		this.thetaGridLines_(pi/4, false);
@@ -99,7 +102,6 @@ PolarView : ValuesView {
 		if (plots.p.show) {plots.stroke};
 		if (legend.p.show) {legend.fill; legend.stroke};
 		if (title.p.show) {title.fill; title.stroke;};
-		// if (note.p.show) {note.stroke};
 	}
 
 	// TODO: How to handle negative values? (e.g. phase of figure of 8 polar pattern...)
@@ -112,6 +114,7 @@ PolarView : ValuesView {
 		if (rhoArray.shape.size == 1) {
 			rhoArray = [rhoArray];
 		};
+
 		// check that multiple datasets are the same size
 		// TODO: don't make this a requirement
 		dataSizes = rhoArray.collect(_.size);
@@ -122,13 +125,11 @@ PolarView : ValuesView {
 			rhoArray = rhoArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
 		};
 
-
 		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
 		dataMin = dataScalar.flat.minItem;
 		dataMax = dataScalar.flat.maxItem;
 
 		if (thetaArray.shape.size == 1) {
-			"wrapping thetaArray in an array".postln;
 			thetaArray = [thetaArray];
 		};
 
@@ -171,7 +172,6 @@ PolarView : ValuesView {
 		} {
 			min
 		};
-
 		// "plotMin updated to: ".post; plotMin.postln;
 
 		this.plotSpec_(
@@ -194,7 +194,6 @@ PolarView : ValuesView {
 		} {
 			max
 		};
-
 		// "plotMax updated to: ".post; plotMax.postln;
 
 		this.plotSpec_(
@@ -224,14 +223,13 @@ PolarView : ValuesView {
 
 			// updates plotData
 			this.plotSpec_(
-				// ControlSpec(newMin, newMax, switch(dbOrScalar, \db, {\db}, \scalar, {\lin})),
 				ControlSpec(newMin, newMax, plotSpec.warp), // spec always linear, even if data is \db
 				true, false // rescale now, don't refresh yet
 			);
 
 			// reset the grid lines to new plotUnits
 			this.levelGridLinesAt_(
-				if (plotUnits == \db, {gridVals.ampdb}, {gridVals.dbamp}).postln,
+				if (plotUnits == \db, {gridVals.ampdb}, {gridVals.dbamp}),
 				true  // refresh
 			);
 		};
@@ -239,16 +237,12 @@ PolarView : ValuesView {
 
 	plotSpec_ { |spec, rescaleNow, refresh|
 		plotSpec = spec;
-		// this.levelGridLinesAt_(gridVals, false);
-		"new spec: ".post; spec.postln;
-
 		// TODO: handle switching the plotUnits with the new spec
-
 		rescaleNow.if{this.prRescalePlotData(refresh:true)};
 	}
 
-	// TODO
 	plotWarp_ { |warp|
+		// TODO:
 		"updating warp not yet implemented".warn;
 		// plotSpec.warp_(warp.asWarp);
 		// update data,
@@ -258,21 +252,16 @@ PolarView : ValuesView {
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
 		dataScalar ?? {"data has not yet been set".warn; ^this};
-		"rescaling plot data: ".postln;
+		// "rescaling plot data: ".postln;
 
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
-			"plot units are db, unmapping from plotSpec .ampdb".postln;
-			// dataScalar.ampdb.postln;
+			// "plot units are db, unmapping from plotSpec .ampdb".postln;
 			plotSpec.copy.unmap(dataScalar.ampdb);
 		} {
-			"plot units are scalar, unmapping from plotSpec".postln;
-			// dataScalar.postln;
-
+			// "plot units are scalar, unmapping from plotSpec".postln;
 			plotSpec.copy.unmap(dataScalar);
 		};
-
-		"rescaled plot data: ".postln; plotData.postln;
 
 		refresh.if{this.refresh};
 	}
@@ -305,7 +294,6 @@ PolarView : ValuesView {
 				\up, {0}, \down, {pi}, \left, {-0.5pi}, \right, {0.5pi}
 			)
 		};
-		// zeroPos = radians;
 		prZeroPos = -0.5pi + (zeroPos * dirFlag);
 		this.startAngle_(startAngle, false);
 		refresh.if{this.refresh};
@@ -348,23 +336,20 @@ PolarView : ValuesView {
 
 	// an array of levels for the grid lines, in plotUnits
 	levelGridLinesAt_ { |levelArray, refresh|
-		// clip to plotMin/Max
 		gridVals = levelArray.select{ |level|
+			// clip to plotMin/Max
 			level.inRange(this.plotMin, this.plotMax)
 		};
 
 		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it, bug?
-		postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals.round(0.00001), plotGrid.round(0.00001));
-		// map to plot normalization
 
+		// postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals.round(0.00001), plotGrid.round(0.00001));
 		refresh.if{this.refresh};
 	}
 
-	// spacing in radians (currently)
+	// NOTE: spacing in radians (currently)
 	thetaGridLines_ { |spacing, refresh=true|
-
 		thetaLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
-
 		// avoid duplicate lines at 0, 2pi
 		if ((thetaLines.first % 2pi) == (thetaLines.last % 2pi), {
 			thetaLines = thetaLines.keep(thetaLines.size-1)
@@ -375,16 +360,16 @@ PolarView : ValuesView {
 
 	// an array of thetaPositions, relative to 'zeroPos' and 'direction'
 	thetaGridLinesAt_ { |thetaArray, refresh|
-
 		// clip to range of plot
 		thetaLines = thetaArray.select{ |theta|
 			theta.inRange(startAngle, startAngle+sweepLength)
 		};
-
 		prThetaLines = prZeroPos + (thetaLines * dirFlag);
+
 		refresh.if{this.refresh};
 	}
 }
+
 
 PolarBackgroundLayer  : ValueViewLayer {
 
@@ -404,16 +389,17 @@ PolarBackgroundLayer  : ValueViewLayer {
 	}
 }
 
-
-/* drawing layers */
-
 PolarPlotLayer : ValueViewLayer {
 	*properties {
 		^(
-			show:      true,
-			fillColor: Color.white,
-			plotColors: [Color.blue],
+			show:        true,
+			fill:        false,        // fill area under the plotted data
+			plotColors:  [Color.blue],
+			fillAlpha:   0.3,          // if fill == true, fill the plotColor with this alpha
 			strokeWidth: 2,
+			// note: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
+			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
+			strokeType:  \line,        // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
 		)
 	}
 
@@ -432,25 +418,47 @@ PolarPlotLayer : ValueViewLayer {
 		};
 
 		view.plotData.do{ |dataset, i|
+			var sType, pnts;
+
 			Pen.push;
-			Pen.moveTo(
+			// generate data point coordinates
+			pnts = dataset.collect{|val, j|
 				Polar(
-					dataset[0] * maxRad,
+					val * maxRad,
 					// wrapAt in case number of theta arrays is mismatched with rhoArrays
 					// e.g. one theta array is provided, like [0,2pi], for multiple datasets
-					zeroPos + (view.thetas.wrapAt(i)[0] * dirFlag)
-				).asPoint
-			);
-			dataset.do{|val, j|
-				Pen.lineTo(
-					Polar(
-						val * maxRad,
-						// wrapAt in case number of theta arrays is mismatched with rhoArrays
-						// e.g. one theta array is provided, like [0,2pi], for multiple datasets
-						zeroPos + (view.thetas.wrapAt(i)[j] * dirFlag)
-					).asPoint
-				);
+					zeroPos + (view.thetas.wrapAt(i)[j] * dirFlag)
+				).asPoint;
 			};
+
+			// fill area under data points
+			if (p.fill) {
+				Pen.moveTo(pnts[0]);
+				pnts.do{|pnt| Pen.lineTo(pnt)};
+				Pen.fillColor_(p.plotColors.asArray.wrapAt(i).copy.alpha_(p.fillAlpha));
+				Pen.fill
+			};
+
+			// draw lines/points/dashes
+			sType = p.strokeType.asArray.wrapAt(i);
+			case
+			{sType == \points} { // data points as circles
+				var rad, rect;
+				rad = p.pointRad ?? {p.strokeWidth};
+				rect = [0,0,rad*2, rad*2].asRect; // data point circle
+				pnts.do{|pnt| Pen.addOval(rect.center_(pnt))};
+			}
+			{(sType == \line) or: (sType.isKindOf(FloatArray))} {
+				// data points as a line, or dashed line
+				Pen.moveTo(pnts[0]);
+				pnts.do{|pnt| Pen.lineTo(pnt)};
+
+				if(sType.isKindOf(FloatArray)) {
+					Pen.lineDash_(sType)
+				};
+			}
+			{warn(format("PolarPlotLayer (PolarView): unknow strokeType property: %\n", sType))};
+
 			Pen.strokeColor_(p.plotColors.asArray.wrapAt(i));
 			Pen.width_(p.strokeWidth);
 			Pen.stroke;
@@ -510,7 +518,6 @@ PolarGridLayer : ValueViewLayer {
 			Pen.pop;
 		};
 
-
 		/* lattitude labels */
 		if(p.showLatVals) {
 			var str, theta, strBnds, corner, thetaMod;
@@ -536,14 +543,7 @@ PolarGridLayer : ValueViewLayer {
 					{ strBnds.left_(corner.x) }
 				);
 
-				Pen.stringCenteredIn(
-					str,
-					// str.bounds.top_(0).right_(level * rad),
-					// str.bounds.top_(corner.y).right_(corner.x),
-					strBnds,
-					Font("Helvetica", 12), p.latTxtColor
-				);
-				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
+				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.latTxtColor);
 			};
 			Pen.pop;
 		};
@@ -556,35 +556,16 @@ PolarGridLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
-
 			view.prThetaLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
-				// corner = Polar(rad, theta).asPoint;
 				txtCen = Polar(rad+(rad*p.lonTxtOffset), theta).asPoint;
 				strVal = view.thetaLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
 				str = if(strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
 
-				// if (thetaMod.inRange(0,pi),
-				// 	{ strBnds.top_(corner.y) },
-				// 	{ strBnds.bottom_(corner.y) }
-				// );
-				//
-				// if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
-				// 	{ strBnds.left_(corner.x) },
-				// 	{ strBnds.right_(corner.x) }
-				// );
-
-				Pen.stringCenteredIn(
-					str,
-					// str.bounds.top_(0).right_(level * rad),
-					// str.bounds.top_(corner.y).right_(corner.x),
-					strBnds,
-					Font("Helvetica", 12), p.lonTxtColor
-				);
-				// Pen.fillOval(Size(5,5).asRect.center_(corner)); Pen.fill;
+				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.lonTxtColor);
 			};
 			Pen.pop;
 		};
@@ -617,14 +598,13 @@ PolarLegendLayer : ValueViewLayer {
 	}
 
 	stroke {
-		var lineCols, cursor, h_2, yHop, stX;
-		"nElem in ".post; nElem.postln;
-		block {|break|
+		var lineCols, cursor, h_2, yHop, stx;
+		var pntRad, strokeTypes, nxtPnt, cRect;
 
+		block {|break|
 			lRect ?? {break.()}; // bail if background hasn't been calculated
 
 			Pen.push;
-
 			Pen.translate(view.cen.x, view.cen.y);    // set 0,0 to center
 
 			if (p.showBorder) {
@@ -639,57 +619,71 @@ PolarLegendLayer : ValueViewLayer {
 			cursor = 0@0; // reset cursor
 
 			Pen.width = view.plots.strokeWidth;
-			lineCols = view.plots.plotColors;
+			lineCols = view.plots.plotColors.asArray;
+			strokeTypes = view.plots.strokeType.asArray;
+			pntRad = view.plots.pointRad;
 			h_2 = txtRects[0].height/2;
+			cRect = [0,0,pntRad*2,pntRad*2].asRect;
 
-			switch(p.layout,
-				\horizontal, { // w = pad-lineLength-lineSpacing-text length-pad-lineLength-lineSpacing-text length-pad, etc
-					Pen.push;
-					nElem.do{ |i|
-						Pen.strokeColor_(lineCols.wrapAt(i));
+			Pen.push;
+			nElem.do{ |i|
+				Pen.strokeColor_(lineCols.wrapAt(i));
 
-						Pen.moveTo(Point(cursor.x,cursor.y+h_2));
-						cursor.x = cursor.x + p.lineLength;
-						Pen.lineTo(Point(cursor.x,cursor.y+h_2));
+				if (strokeTypes.wrapAt(i).isKindOf(FloatArray)) {
+					Pen.lineDash_(strokeTypes.wrapAt(i))
+				};
+
+				switch(p.layout,
+					\horizontal, { // w = pad-lineLength-lineSpacing-text length-pad-lineLength-lineSpacing-text length-pad, etc
+						if (strokeTypes.wrapAt(i) == \points) {
+							nxtPnt = Point(cursor.x+(p.lineLength/2),cursor.y+h_2);
+							Pen.addOval(cRect.center_(nxtPnt));
+							cursor.x = cursor.x + p.lineLength;
+						} { // lines or dashes
+							nxtPnt = Point(cursor.x,cursor.y+h_2);
+							Pen.moveTo(nxtPnt);
+							cursor.x = cursor.x + p.lineLength;
+							nxtPnt = Point(cursor.x,cursor.y+h_2);
+							Pen.lineTo(nxtPnt);
+						};
 						Pen.stroke;
 
 						cursor.x = cursor.x + p.lineSpacing;
 						Pen.stringLeftJustIn(
-							labels[i],
-							txtRects[i].left_(cursor.x).top_(cursor.y),
-							font,
-							p.txtColor
+							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
+							font, p.txtColor
 						);
 						cursor.x = cursor.x + txtRects[i].width + p.pad;
-					};
-					Pen.pop;
-				},
-				\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
-					Pen.push;
-					yHop = txtRects[0].height+ p.pad;
-					stX = cursor.x;
-					nElem.do{ |i|
-						Pen.strokeColor_(lineCols.wrapAt(i));
 
-						Pen.moveTo(Point(stX,cursor.y+h_2));
-						cursor.x = stX + p.lineLength;
-						Pen.lineTo(Point(cursor.x,cursor.y+h_2));
+					},
+					\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
+						yHop = txtRects[0].height+ p.pad;
+						stx = cursor.x;
+
+						if (strokeTypes.wrapAt(i) == \points) {
+							nxtPnt = Point(stx+(p.lineLength/2),cursor.y+h_2);
+							Pen.addOval(cRect.center_(nxtPnt));
+							cursor.x = stx + p.lineLength;
+						} {
+							nxtPnt = Point(stx,cursor.y+h_2);
+							Pen.moveTo(nxtPnt);
+							cursor.x = stx + p.lineLength;
+							nxtPnt = Point(cursor.x,cursor.y+h_2);
+							Pen.lineTo(nxtPnt);
+						};
 						Pen.stroke;
 
 						cursor.x = cursor.x + p.lineSpacing;
 						Pen.stringLeftJustIn(
-							labels[i],
-							txtRects[i].left_(cursor.x).top_(cursor.y),
-							font,
-							p.txtColor
+							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
+							font, p.txtColor
 						);
-						cursor.x = stX; // jump back to starting x
+						cursor.x = stx; // jump back to starting x
 						cursor.y = cursor.y + yHop;
-					};
-					Pen.pop;
-				}
-			);
-
+					}
+				);
+			};
+			Pen.pop;
 			Pen.pop;
 		};
 	}
@@ -702,12 +696,10 @@ PolarLegendLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
-			p.labels.postln;
 			if (p.labels.isKindOf(String)) {
 				p.labels = [p.labels]
 			};
 			labels = p.labels.asArray.extend(nElem, " - "); // make sure there are labels for all plots
-			labels.postln;
 
 			font = p.font.size_(p.fontSize);
 			txtRects = labels.collect(_.bounds(font));
@@ -727,9 +719,9 @@ PolarLegendLayer : ValueViewLayer {
 			lRect = [0,0, sumW, sumH].asRect.center_(0@0);
 
 			switch(p.align,
-				\right, {lRect.right = view.bnds.width/2 - p.margin},
-				\left, {lRect.left = view.bnds.width/2.neg + p.margin},
-				\top, {lRect.top = view.bnds.height/2.neg + p.margin},
+				\right,  {lRect.right = view.bnds.width/2 - p.margin},
+				\left,   {lRect.left = view.bnds.width/2.neg + p.margin},
+				\top,    {lRect.top = view.bnds.height/2.neg + p.margin},
 				\bottom, {lRect.bottom = view.bnds.height/2 - p.margin},
 				\topRight, {
 					lRect.top = view.bnds.height/2.neg + p.margin;
@@ -757,7 +749,7 @@ PolarLegendLayer : ValueViewLayer {
 	}
 }
 
-PolarTxtLayer : ValueViewLayer {
+PolarTitleLayer : ValueViewLayer {
 	var font, txtRect, bgRect;
 
 	*properties {
@@ -787,7 +779,6 @@ PolarTxtLayer : ValueViewLayer {
 			Pen.stroke;
 		};
 
-		// r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
 		txtRect = txtRect.center_(bgRect.center);
 		Pen.stringCenteredIn(p.txt, txtRect, font, p.txtColor);
 		Pen.stroke;
@@ -796,21 +787,20 @@ PolarTxtLayer : ValueViewLayer {
 
 	fill {
 		font = p.font.size_(p.fontSize);
+
 		// String:-bounds doesn't account for newlines, so add it up
 		txtRect = if (p.txt.contains("\n")) {
 			var rects, w, h;
 			rects = p.txt.split($\n).collect(_.bounds(font));
-			w = rects.collect(_.width).maxItem;
+			w = rects.collect(_.width).maxItem + 4; // give a lil extra width
 			h = rects[0].height * rects.size;
 			[0,0,w,h].asRect
 		} {
 			p.txt.bounds(font)
 		};
 
-		bgRect = txtRect + [0, 0, p.pad, p.pad].asRect;
-
 		Pen.push;
-		// r = (view.canvas.asArray * [1, 1, p.width, p.height] + [m,m,m.neg,m.neg]).asRect.center_(view.cen.x@(view.bnds.height*p.height/2));
+		bgRect = txtRect + [0, 0, p.pad, p.pad].asRect;
 		bgRect = bgRect.center_(view.bnds.width/2 @ (bgRect.height/2 + p.margin));
 		Pen.fillColor_(p.fillColor);
 		Pen.fillRect(bgRect);
@@ -818,3 +808,40 @@ PolarTxtLayer : ValueViewLayer {
 		Pen.pop;
 	}
 }
+
+/*
+
+(
+v = PolarView(bounds: Size(500, 500).asRect, specs: [[0,2pi].asSpec],
+	initVals: 30.collect{rrand(-2pi,2pi)},
+	direction: \ccw,
+	zeroPos: \right,
+	plotUnits: \scalar
+).front;
+v.title.txt_("Two plots: sine and cosine");
+v.data_([0, 2pi], [sinPi((0,0.005 .. 1)), cosPi((0,0.005 .. 1))], \scalar); // sine window
+v.plots.plotColors = 2.collect{Color.rand};
+v.legend.labels_(["sine", "cosine"]);
+)
+
+// 2 plots of data
+v.plots.fill = true
+v.plots.fillAlpha = 0.3
+
+v.levelGridLines_(1, 0.25, -1) // note -1 is the minimum, in the center
+v.plots.strokeType = \points
+v.plots.pointRad = 1
+v.plots.strokeType = [\line,\points] // different stroke styles
+
+v.plots.strokeType = [\points, FloatArray.with(*[6, 3, 2, 3])]
+v.legend.lineLength = 25 // make lineLength long enough to see the dashed pattern
+v.legend.align
+v.legend.layout = \horizontal
+
+// switch to a dB scaling
+v.plotUnits = \db
+v.plotMin_(-40)
+v.levelGridLines_(0, 5, -40)
+
+
+*/
