@@ -4,6 +4,8 @@ TODO
 - \circle data points, for the option of re-creating rE-style directivity displays
 - invert values so that minimum values are at the radius, max values are at the center
 - support a notion of phase, as in a figure-of-eight mic pattern
+- optionally resample the data when plotting for radially uniform sample points, instead of
+-      one point per data point
 */
 
 PolarView : ValuesView {
@@ -582,12 +584,13 @@ PolarLegendLayer : ValueViewLayer {
 			show:        true,
 			fillColor:   Color.white,
 			txtColor:    Color.gray,
-			align:      \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
-			margin:      10,           // margin between legend and view's edge
-			pad:         5,            // padding between text and legend border
+			align:       \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
+			inset:       10,           // inset between legend and view's edge
+			margin:      5,            // inset margin between entries and border of the legend
+			spacing:     8,            // spacing between legend entries
 			layout:      \vertical,    // horizontal, vertical
 			lineLength:  15,           // length of sample plot line
-			lineSpacing: 4,            // spacing between sample line and text
+			lineSpacing: 6,            // spacing between sample line and text
 			font:        Font("Helvetica"),
 			fontSize:    14,
 			labels:      ["plot 1"],
@@ -598,8 +601,9 @@ PolarLegendLayer : ValueViewLayer {
 	}
 
 	stroke {
-		var lineCols, cursor, h_2, yHop, stx;
-		var pntRad, strokeTypes, nxtPnt, cRect;
+		var lineCols, cursor, h_2, stx;
+		var pntRad, strokeTypes, cRect;
+		var cStep, numcSteps, cOff; // for strokeTupe == \points
 
 		block {|break|
 			lRect ?? {break.()}; // bail if background hasn't been calculated
@@ -614,7 +618,7 @@ PolarLegendLayer : ValueViewLayer {
 				Pen.stroke;
 			};
 
-			cursor = lRect.leftTop + (p.pad@p.pad);
+			cursor = lRect.leftTop + (p.margin@p.margin);
 			Pen.translate(cursor.x, cursor.y);        // translate to top left of legend background rect
 			cursor = 0@0; // reset cursor
 
@@ -625,6 +629,16 @@ PolarLegendLayer : ValueViewLayer {
 			h_2 = txtRects[0].height/2;
 			cRect = [0,0,pntRad*2,pntRad*2].asRect;
 
+			if (strokeTypes.any(_ == \points)) {
+				cStep = cRect.width * 3;  // separation between points pnt diam * 5
+				numcSteps = (p.lineLength / cStep).asInt; // how many points on the leg
+				cOff = if (numcSteps > 0) {
+					p.lineLength - (cStep * numcSteps) / 2;
+				} {
+					p.lineLength / 2
+				}
+			};
+
 			Pen.push;
 			nElem.do{ |i|
 				Pen.strokeColor_(lineCols.wrapAt(i));
@@ -634,52 +648,65 @@ PolarLegendLayer : ValueViewLayer {
 				};
 
 				switch(p.layout,
-					\horizontal, { // w = pad-lineLength-lineSpacing-text length-pad-lineLength-lineSpacing-text length-pad, etc
+					\horizontal, {
+						// w = margin-lineLength-lineSpacing-text length-spacing-lineLength-lineSpacing-text length-margin, etc
 						if (strokeTypes.wrapAt(i) == \points) {
-							nxtPnt = Point(cursor.x+(p.lineLength/2),cursor.y+h_2);
-							Pen.addOval(cRect.center_(nxtPnt));
-							cursor.x = cursor.x + p.lineLength;
+							cursor = cursor + (cOff@h_2);
+							Pen.addOval(cRect.center_(cursor));
+							numcSteps.do {
+								cursor = cursor + (cStep@0); // step
+								Pen.addOval(cRect.center_(cursor));
+							};
+							cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
 						} { // lines or dashes
-							nxtPnt = Point(cursor.x,cursor.y+h_2);
-							Pen.moveTo(nxtPnt);
-							cursor.x = cursor.x + p.lineLength;
-							nxtPnt = Point(cursor.x,cursor.y+h_2);
-							Pen.lineTo(nxtPnt);
+							cursor = cursor + (0@h_2);
+							Pen.moveTo(cursor);
+							cursor = cursor + (p.lineLength@0);
+							Pen.lineTo(cursor);
+							cursor = cursor + (p.lineSpacing@h_2.neg);
 						};
 						Pen.stroke;
 
-						cursor.x = cursor.x + p.lineSpacing;
 						Pen.stringLeftJustIn(
 							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
 							font, p.txtColor
 						);
-						cursor.x = cursor.x + txtRects[i].width + p.pad;
+						cursor.x = cursor.x + txtRects[i].width + p.spacing;
 
 					},
-					\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
-						yHop = txtRects[0].height+ p.pad;
+					\vertical, {
+						// h = margin-txtHeight-spacing-txtHeight-margin
 						stx = cursor.x;
 
 						if (strokeTypes.wrapAt(i) == \points) {
-							nxtPnt = Point(stx+(p.lineLength/2),cursor.y+h_2);
-							Pen.addOval(cRect.center_(nxtPnt));
-							cursor.x = stx + p.lineLength;
+							cursor = cursor + (cOff@h_2);
+							Pen.addOval(cRect.center_(cursor));
+							numcSteps.do {
+								cursor = cursor + (cStep@0); // step
+								Pen.addOval(cRect.center_(cursor));
+							};
+							cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
 						} {
-							nxtPnt = Point(stx,cursor.y+h_2);
-							Pen.moveTo(nxtPnt);
-							cursor.x = stx + p.lineLength;
-							nxtPnt = Point(cursor.x,cursor.y+h_2);
-							Pen.lineTo(nxtPnt);
+							cursor = cursor + (0@h_2);
+							Pen.moveTo(cursor);
+							cursor = cursor + (p.lineLength@0);
+							Pen.lineTo(cursor);
+							cursor = cursor + (p.lineSpacing@h_2.neg);
+							// nxtPnt = Point(stx,cursor.y+h_2);
+							// Pen.moveTo(nxtPnt);
+							// cursor.x = stx + p.lineLength;
+							// nxtPnt = Point(cursor.x,cursor.y+h_2);
+							// Pen.lineTo(nxtPnt);
 						};
 						Pen.stroke;
 
-						cursor.x = cursor.x + p.lineSpacing;
+						// cursor.x = cursor.x + p.lineSpacing;
 						Pen.stringLeftJustIn(
 							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
 							font, p.txtColor
 						);
 						cursor.x = stx; // jump back to starting x
-						cursor.y = cursor.y + yHop;
+						cursor.y = cursor.y + txtRects[0].height + p.spacing;
 					}
 				);
 			};
@@ -689,7 +716,7 @@ PolarLegendLayer : ValueViewLayer {
 	}
 
 	fill {
-		var sumW, sumH, pad;
+		var sumW, sumH, spacing, margin;
 
 		nElem = view.plotData.size;
 		if(nElem > 0) {
@@ -703,41 +730,44 @@ PolarLegendLayer : ValueViewLayer {
 
 			font = p.font.size_(p.fontSize);
 			txtRects = labels.collect(_.bounds(font));
-			pad = p.pad;
+			spacing = p.spacing;
+			margin = p.margin;
 
 			switch(p.layout,
-				\horizontal, { // w = pad-lineLength-lineSpacing-textlength-pad-lineLength-lineSpacing-text length-pad, etc
-					sumW = (pad + p.lineLength + p.lineSpacing * nElem) + txtRects.collect(_.width).sum + pad;
-					sumH = (pad * 2) + txtRects[0].height;
+				\horizontal, {
+					// w = margin-lineLength-lineSpacing-textlength-spacing-lineLength-lineSpacing-text length-spacing, etc, - margin
+					sumW = margin + (p.lineLength + p.lineSpacing + spacing * nElem) + txtRects.collect(_.width).sum - spacing + margin;
+					sumH = (margin * 2) + txtRects[0].height;
 				},
-				\vertical, { // h = pad-txtHeight-pad-txtHeight-pad
-					sumW = pad + p.lineLength + p.lineSpacing + txtRects.collect(_.width).maxItem + pad;
-					sumH = pad + (txtRects[0].height + pad * nElem);
+				\vertical, {
+					// h = spacing-txtHeight-spacing-txtHeight-spacing
+					sumW = margin + p.lineLength + p.lineSpacing + txtRects.collect(_.width).maxItem + margin;
+					sumH = margin + (txtRects[0].height + spacing * nElem) - spacing + margin;
 				}
 			);
 
 			lRect = [0,0, sumW, sumH].asRect.center_(0@0);
 
 			switch(p.align,
-				\right,  {lRect.right = view.bnds.width/2 - p.margin},
-				\left,   {lRect.left = view.bnds.width/2.neg + p.margin},
-				\top,    {lRect.top = view.bnds.height/2.neg + p.margin},
-				\bottom, {lRect.bottom = view.bnds.height/2 - p.margin},
+				\right,  {lRect.right = view.bnds.width/2 - p.inset},
+				\left,   {lRect.left = view.bnds.width/2.neg + p.inset},
+				\top,    {lRect.top = view.bnds.height/2.neg + p.inset},
+				\bottom, {lRect.bottom = view.bnds.height/2 - p.inset},
 				\topRight, {
-					lRect.top = view.bnds.height/2.neg + p.margin;
-					lRect.right = view.bnds.width/2 - p.margin;
+					lRect.top = view.bnds.height/2.neg + p.inset;
+					lRect.right = view.bnds.width/2 - p.inset;
 				},
 				\topLeft, {
-					lRect.top = view.bnds.height/2.neg + p.margin;
-					lRect.left = view.bnds.width/2.neg + p.margin;
+					lRect.top = view.bnds.height/2.neg + p.inset;
+					lRect.left = view.bnds.width/2.neg + p.inset;
 				},
 				\bottomRight, {
-					lRect.bottom = view.bnds.height/2 - p.margin;
-					lRect.right = view.bnds.width/2 - p.margin;
+					lRect.bottom = view.bnds.height/2 - p.inset;
+					lRect.right = view.bnds.width/2 - p.inset;
 				},
 				\bottomLeft, {
-					lRect.bottom = view.bnds.height/2 - p.margin;
-					lRect.left = view.bnds.width/2.neg + p.margin;
+					lRect.bottom = view.bnds.height/2 - p.inset;
+					lRect.left = view.bnds.width/2.neg + p.inset;
 				},
 			);
 
