@@ -1,16 +1,17 @@
 /*
 TODO
-- offset plot from title so they don't overlap
 - \circle data points, for the option of re-creating rE-style directivity displays
 - invert values so that minimum values are at the radius, max values are at the center
 - support a notion of phase, as in a figure-of-eight mic pattern
 - optionally resample the data when plotting for radially uniform sample points, instead of
 -      one point per data point
+- calculate plot/view dimensions based on actual plot outline (if it's not a circle)
+-      e.g. a semi-circular or wedge plot
 */
 
 PolarView : ValuesView {
 	// set in drawFunc, for access by drawing layers
-	var <bnds, <cen, <minDim, <canvas;
+	var <bnds, <cen, <minDim;
 	// layers
 	var <background, <plots, <grid, <legend, <title;
 	var <thetas, data; // data points and their corresponding theta positions
@@ -32,6 +33,8 @@ PolarView : ValuesView {
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
 	var <thetaLines;      // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
 	var <prThetaLines;    // theta positions of longitude lines, in drawing coordinates
+	var <prPlotCen;         // center of the plot, offset by the title
+	var <prPlotRad;         // radius of the plot, scaled by plotRadius arg
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 
@@ -85,20 +88,28 @@ PolarView : ValuesView {
 	}
 
 	drawFunc {
-		^{|v|
+		^{  |v|
+			var titleOffset, h;
 			// "global" instance vars, accessed by ValueViewLayers
 			bnds = v.bounds;
-			cen  = bnds.center;
-			minDim = min(bnds.width, bnds.height);
-			// TODO: move setting this variable to onResize function
-			canvas = bnds.size.asRect;
+			if (title.p.show) {
+				title.calcBounds;
+				titleOffset = 2 * title.p.inset + title.bgRect.height;
+				h = bnds.height - titleOffset;
+			} {
+				titleOffset = 0;
+				h = bnds.height
+			};
+			cen = bnds.center;
+			minDim = min(bnds.width, h);      // scale down for space around edge
+			prPlotRad = minDim / 2 * plotRadius;
+			prPlotCen = Point(cen.x, max(cen.y, titleOffset + (minDim/2)));
+
 			this.drawInThisOrder;
 		};
 	}
 
 	drawInThisOrder {
-		// tranlate to top left of drawing area
-		Pen.translate(canvas.leftTop.x, canvas.leftTop.y);
 		if (background.p.show) {background.fill};
 		if (grid.p.show) {grid.stroke};
 		if (plots.p.show) {plots.stroke};
@@ -122,7 +133,11 @@ PolarView : ValuesView {
 		dataSizes = rhoArray.collect(_.size);
 		shapetest = dataSizes.every(_ == rhoArray[0].size);
 		shapetest.not.if{
-			warn(format("Size of datasets are mismatched: %, extending datasets for identical sizes", rhoArray.collect(_.size)));
+			warn(format(
+				"[PolarView:-data_] Size of datasets are mismatched: "
+				"%, extending datasets for identical sizes",
+				rhoArray.collect(_.size))
+			);
 			// stutter the last values to make all array sizes equal
 			rhoArray = rhoArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
 		};
@@ -174,7 +189,6 @@ PolarView : ValuesView {
 		} {
 			min
 		};
-		// "plotMin updated to: ".post; plotMin.postln;
 
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).minval_(plotMin),
@@ -196,7 +210,6 @@ PolarView : ValuesView {
 		} {
 			max
 		};
-		// "plotMax updated to: ".post; plotMax.postln;
 
 		this.plotSpec_(
 			ControlSpec.newFrom(plotSpec).maxval_(plotMax),
@@ -247,21 +260,18 @@ PolarView : ValuesView {
 		// TODO:
 		"updating warp not yet implemented".warn;
 		// plotSpec.warp_(warp.asWarp);
-		// update data,
+		// update data
 		// update gridlines
 	}
 
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
 		dataScalar ?? {"data has not yet been set".warn; ^this};
-		// "rescaling plot data: ".postln;
 
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
-			// "plot units are db, unmapping from plotSpec .ampdb".postln;
 			plotSpec.copy.unmap(dataScalar.ampdb);
 		} {
-			// "plot units are scalar, unmapping from plotSpec".postln;
 			plotSpec.copy.unmap(dataScalar);
 		};
 
@@ -339,13 +349,11 @@ PolarView : ValuesView {
 	// an array of levels for the grid lines, in plotUnits
 	levelGridLinesAt_ { |levelArray, refresh|
 		gridVals = levelArray.select{ |level|
-			// clip to plotMin/Max
-			level.inRange(this.plotMin, this.plotMax)
+			level.inRange(this.plotMin, this.plotMax) // clip to plotMin/Max
 		};
 
-		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required??? it fails without it, bug?
+		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required? it fails without it, bug?
 
-		// postf("plotSpec: %\ngridVals: %\n", plotSpec, gridVals.round(0.00001), plotGrid.round(0.00001));
 		refresh.if{this.refresh};
 	}
 
@@ -362,8 +370,8 @@ PolarView : ValuesView {
 
 	// an array of thetaPositions, relative to 'zeroPos' and 'direction'
 	thetaGridLinesAt_ { |thetaArray, refresh|
-		// clip to range of plot
 		thetaLines = thetaArray.select{ |theta|
+			// clip to range of plot
 			theta.inRange(startAngle, startAngle+sweepLength)
 		};
 		prThetaLines = prZeroPos + (thetaLines * dirFlag);
@@ -385,7 +393,7 @@ PolarBackgroundLayer  : ValueViewLayer {
 	fill {
 		Pen.push;
 		Pen.fillColor_(p.fillColor);
-		Pen.addAnnularWedge(view.cen, 0.001, view.minDim/2*view.plotRadius, view.prStartAngle, view.prSweepLength);
+		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
 		Pen.fill;
 		Pen.pop;
 	}
@@ -399,7 +407,7 @@ PolarPlotLayer : ValueViewLayer {
 			plotColors:  [Color.blue],
 			fillAlpha:   0.3,          // if fill == true, fill the plotColor with this alpha
 			strokeWidth: 2,
-			// note: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
+			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
 			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
 			strokeType:  \line,        // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
 		)
@@ -409,10 +417,10 @@ PolarPlotLayer : ValueViewLayer {
 		var zeroPos, dirFlag, maxRad;
 		zeroPos = view.prZeroPos;
 		dirFlag = view.dirFlag;
-		maxRad = view.minDim/2*view.plotRadius;
+		maxRad = view.prPlotRad;
 
 		Pen.push;
-		Pen.translate(view.cen.x, view.cen.y);
+		Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 		// make sure a single color is held in an array
 		if (p.plotColors.isKindOf(Color)) {
@@ -486,14 +494,14 @@ PolarGridLayer : ValueViewLayer {
 			latTxtRound:  0.01,
 			lonTxtRound:  1,
 			lonTxtWrap:   [0, 2pi],
-			latTxtPos:    pi/4, // radian angle of latitude labels, relative to zeroPos
+			latTxtPos:    pi/4,  // radian angle of latitude labels, relative to zeroPos
 			lonTxtOffset: 0.065, // percentage of the radius
 			strokeWidth:  1,
 		)
 	}
 
 	stroke {
-		var rad = view.minDim/2*view.plotRadius;
+		var rad = view.prPlotRad;
 
 		Pen.push;
 
@@ -503,14 +511,14 @@ PolarGridLayer : ValueViewLayer {
 
 		if (p.showLatLines) {
 			view.plotGrid.do{ |level|
-				Pen.addArc(view.cen, level * rad, view.prStartAngle, view.prSweepLength);
+				Pen.addArc(view.prPlotCen, level * rad, view.prStartAngle, view.prSweepLength);
 			};
 			Pen.stroke;
 		};
 
 		if (p.showLonLines) {
 			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y);
+			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 			view.prThetaLines.do{ |theta|
 				Pen.moveTo(0@0);
@@ -525,7 +533,7 @@ PolarGridLayer : ValueViewLayer {
 			var str, theta, strBnds, corner, thetaMod;
 
 			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y);
+			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 			theta = view.prZeroPos + (p.latTxtPos * view.dirFlag);
 			thetaMod = theta % 2pi;
@@ -553,15 +561,15 @@ PolarGridLayer : ValueViewLayer {
 
 		/* longitude labels */
 		if(p.showLonVals) {
-			var str, strVal, theta, strBnds, txtCen, thetaMod; //corner,
+			var str, strVal, theta, strBnds, txtCen, thetaMod;
 
 			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y);
+			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 			view.prThetaLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
-				txtCen = Polar(rad+(rad*p.lonTxtOffset), theta).asPoint;
+				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
 				strVal = view.thetaLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
 				str = if(strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
@@ -586,14 +594,14 @@ PolarLegendLayer : ValueViewLayer {
 			txtColor:    Color.gray,
 			align:       \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
 			inset:       10,           // inset between legend and view's edge
-			margin:      5,            // inset margin between entries and border of the legend
+			margin:      10,            // inset margin between entries and border of the legend
 			spacing:     8,            // spacing between legend entries
 			layout:      \vertical,    // horizontal, vertical
 			lineLength:  15,           // length of sample plot line
 			lineSpacing: 6,            // spacing between sample line and text
 			font:        Font("Helvetica"),
 			fontSize:    14,
-			labels:      ["plot 1"],
+			labels:      ["Plot 1"],
 			showBorder:  true,
 			borderColor: Color.gray,
 			borderWidth: 2,
@@ -605,11 +613,11 @@ PolarLegendLayer : ValueViewLayer {
 		var pntRad, strokeTypes, cRect;
 		var cStep, numcSteps, cOff; // for strokeTupe == \points
 
-		block {|break|
+		block { |break|
 			lRect ?? {break.()}; // bail if background hasn't been calculated
 
 			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y);    // set 0,0 to center
+			Pen.translate(view.cen.x, view.cen.y); // set 0,0 to center
 
 			if (p.showBorder) {
 				Pen.width_(p.borderWidth);
@@ -619,7 +627,8 @@ PolarLegendLayer : ValueViewLayer {
 			};
 
 			cursor = lRect.leftTop + (p.margin@p.margin);
-			Pen.translate(cursor.x, cursor.y);        // translate to top left of legend background rect
+			// translate to top left of legend background rect
+			Pen.translate(cursor.x, cursor.y);
 			cursor = 0@0; // reset cursor
 
 			Pen.width = view.plots.strokeWidth;
@@ -630,8 +639,8 @@ PolarLegendLayer : ValueViewLayer {
 			cRect = [0,0,pntRad*2,pntRad*2].asRect;
 
 			if (strokeTypes.any(_ == \points)) {
-				cStep = cRect.width * 3;  // separation between points pnt diam * 5
-				numcSteps = (p.lineLength / cStep).asInt; // how many points on the leg
+				cStep = cRect.width * 3;  // separation between pnts = pnt diam * 5
+				numcSteps = (p.lineLength / cStep).asInt; // how many pnts on the line
 				cOff = if (numcSteps > 0) {
 					p.lineLength - (cStep * numcSteps) / 2;
 				} {
@@ -654,7 +663,7 @@ PolarLegendLayer : ValueViewLayer {
 							cursor = cursor + (cOff@h_2);
 							Pen.addOval(cRect.center_(cursor));
 							numcSteps.do {
-								cursor = cursor + (cStep@0); // step
+								cursor = cursor + (cStep@0);
 								Pen.addOval(cRect.center_(cursor));
 							};
 							cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
@@ -692,15 +701,9 @@ PolarLegendLayer : ValueViewLayer {
 							cursor = cursor + (p.lineLength@0);
 							Pen.lineTo(cursor);
 							cursor = cursor + (p.lineSpacing@h_2.neg);
-							// nxtPnt = Point(stx,cursor.y+h_2);
-							// Pen.moveTo(nxtPnt);
-							// cursor.x = stx + p.lineLength;
-							// nxtPnt = Point(cursor.x,cursor.y+h_2);
-							// Pen.lineTo(nxtPnt);
 						};
 						Pen.stroke;
 
-						// cursor.x = cursor.x + p.lineSpacing;
 						Pen.stringLeftJustIn(
 							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
 							font, p.txtColor
@@ -726,7 +729,8 @@ PolarLegendLayer : ValueViewLayer {
 			if (p.labels.isKindOf(String)) {
 				p.labels = [p.labels]
 			};
-			labels = p.labels.asArray.extend(nElem, " - "); // make sure there are labels for all plots
+			// make sure there are labels for all plots
+			labels = p.labels.asArray.extend(nElem, " - ");
 
 			font = p.font.size_(p.fontSize);
 			txtRects = labels.collect(_.bounds(font));
@@ -780,7 +784,7 @@ PolarLegendLayer : ValueViewLayer {
 }
 
 PolarTitleLayer : ValueViewLayer {
-	var font, txtRect, bgRect;
+	var font, txtRect, <bgRect, bndCalcd;
 
 	*properties {
 		^(
@@ -788,8 +792,8 @@ PolarTitleLayer : ValueViewLayer {
 			fillColor:   Color.white,
 			txtColor:    Color.black,
 			align:       \top,
-			margin:      15,
-			pad:         15,
+			inset:       10,    // pixel distance inset from the top of the view
+			margin:      15,    // margin around text and title border
 			txt:         "plot",
 			font:        Font("Helvetica"),
 			fontSize:    18,
@@ -799,25 +803,34 @@ PolarTitleLayer : ValueViewLayer {
 		)
 	}
 
+	// fill needs to be called before stroke
 	stroke {
 		Pen.push;
-
 		if (p.showBorder) {
 			Pen.width_(p.borderWidth);
 			Pen.strokeColor_(p.borderColor);
 			Pen.addRect(bgRect);
 			Pen.stroke;
 		};
-
-		txtRect = txtRect.center_(bgRect.center);
 		Pen.stringCenteredIn(p.txt, txtRect, font, p.txtColor);
 		Pen.stroke;
 		Pen.pop;
 	}
 
 	fill {
-		font = p.font.size_(p.fontSize);
+		if (bndCalcd.not) {
+			this.calcBounds;
+			bndCalcd = false
+		};
+		Pen.push;
+		Pen.fillColor_(p.fillColor);
+		Pen.fillRect(bgRect);
+		Pen.fill;
+		Pen.pop;
+	}
 
+	calcBounds {
+		font = p.font.size_(p.fontSize);
 		// String:-bounds doesn't account for newlines, so add it up
 		txtRect = if (p.txt.contains("\n")) {
 			var rects, w, h;
@@ -828,15 +841,12 @@ PolarTitleLayer : ValueViewLayer {
 		} {
 			p.txt.bounds(font)
 		};
-
-		Pen.push;
-		bgRect = txtRect + [0, 0, p.pad, p.pad].asRect;
-		bgRect = bgRect.center_(view.bnds.width/2 @ (bgRect.height/2 + p.margin));
-		Pen.fillColor_(p.fillColor);
-		Pen.fillRect(bgRect);
-		Pen.fill;
-		Pen.pop;
+		bgRect = txtRect + [0, 0, p.margin, p.margin].asRect;
+		bgRect = bgRect.center_(view.bnds.width/2 @ (bgRect.height/2 + p.inset));
+		txtRect = txtRect.center_(bgRect.center);
+		bndCalcd = true;
 	}
+
 }
 
 /*
