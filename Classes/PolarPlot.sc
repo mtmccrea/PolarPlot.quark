@@ -7,6 +7,7 @@ TODO
 -      one point per data point
 - calculate plot/view dimensions based on actual plot outline (if it's not a circle)
 -      e.g. a semi-circular or wedge plot
+- optionally show lattitude scale in a separate, adjacent view that aligns with plot
 */
 
 PolarView : ValuesView {
@@ -33,10 +34,11 @@ PolarView : ValuesView {
 	var <plotGrid;        // gridVals, normalized to plotMin/Max
 	var <thetaLines;      // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
 	var <prThetaLines;    // theta positions of longitude lines, in drawing coordinates
-	var <prPlotCen;         // center of the plot, offset by the title
-	var <prPlotRad;         // radius of the plot, scaled by plotRadius arg
+	var <prPlotCen;       // center of the plot, offset by the title
+	var <prPlotRad;       // radius of the plot, scaled by plotRadius arg
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
+	var <displayAbsoluteValue = false; // display the data as the absolute values (of the scalar values)
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
@@ -120,8 +122,10 @@ PolarView : ValuesView {
 	// TODO: How to handle negative values? (e.g. phase of figure of 8 polar pattern...)
 	//    always .abs?
 	//    through origin? if through origin, alter color based on sign/phase?
-	data_ { |thetaArray, rhoArray, units = \scalar, refresh=true|
+	data_ { |thetaArray, rhoArray, units = \scalar, displayAbs, refresh=true|
 		var shapetest, dataSizes;
+		var thetaEnv, dataStep;
+		// var flatData, thetaEnv, dataStep;
 
 		// support 2D arrays: force into shape [1, datasize], i.e. [[1,2,3],[1,3,7]]
 		if (rhoArray.shape.size == 1) {
@@ -142,9 +146,7 @@ PolarView : ValuesView {
 			rhoArray = rhoArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
 		};
 
-		dataScalar = if (units==\db) {rhoArray.dbamp} {rhoArray};
-		dataMin = dataScalar.flat.minItem;
-		dataMax = dataScalar.flat.maxItem;
+		dataScalar = if (units==\db) { rhoArray.dbamp } { rhoArray };
 
 		if (thetaArray.shape.size == 1) {
 			thetaArray = [thetaArray];
@@ -156,7 +158,6 @@ PolarView : ValuesView {
 				// thetaArray assumed to be breakpoints (likely start/end points)
 				// create an "envelope" from breakpoints and generate theta values
 				// for each rho value
-				var thetaEnv, dataStep;
 				dataStep = (rhoArray[i].size - 1).reciprocal;
 				thetaEnv = Env(thetaArr, (thetaArr.size-1).reciprocal, \lin);
 				thetaArray[i] = rhoArray[i].collect{|val, j| thetaEnv.at(dataStep*j)};
@@ -164,6 +165,21 @@ PolarView : ValuesView {
 		};
 
 		thetas = thetaArray;
+
+		// set dataMin/Max based on displayAbsoluteValue flag
+		this.displayAbsoluteValue_(displayAbs ?? displayAbsoluteValue, refresh);
+	}
+
+	displayAbsoluteValue_ { |bool, refresh=true|
+		var flatData;
+
+		displayAbsoluteValue = bool;
+
+		flatData = dataScalar.flat;
+		if (displayAbsoluteValue) { flatData = flatData.abs };
+
+		dataMin = flatData.minItem;
+		dataMax = flatData.maxItem;
 
 		// re-calc plotData based on min/max
 		this.plotMinMax_(minVal, maxVal, refresh);
@@ -184,8 +200,8 @@ PolarView : ValuesView {
 	plotMin_ { |min, rescaleNow=true, refresh=true|
 		var plotMin;
 
-		plotMin = if ((min == \auto) or: min.isNil) {
-			if (plotUnits == \db) {max(dataMin.ampdb, clipDbLow)} {dataMin}
+		plotMin = if (min == \auto or: { min.isNil }) {
+			if (plotUnits == \db) { max(dataMin.ampdb, clipDbLow) } { dataMin }
 		} {
 			min
 		};
@@ -197,7 +213,7 @@ PolarView : ValuesView {
 		);
 
 		this.levelGridLinesAt_(this.gridVals, false);
-		rescaleNow.if{this.prRescalePlotData(refresh)};
+		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 	// max should be set in the plotUnits
@@ -205,8 +221,8 @@ PolarView : ValuesView {
 	plotMax_ { |max, rescaleNow=true, refresh=true|
 		var plotMax;
 
-		plotMax = if ((max == \auto) or: max.isNil) {
-			if (plotUnits == \db) {dataMax.ampdb} {dataMax}
+		plotMax = if (max == \auto or: { max.isNil }) {
+			if (plotUnits == \db) { dataMax.ampdb } { dataMax }
 		} {
 			max
 		};
@@ -218,7 +234,7 @@ PolarView : ValuesView {
 		);
 
 		this.levelGridLinesAt_(this.gridVals, false);
-		rescaleNow.if{this.prRescalePlotData(refresh)};
+		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 	// \db or \scalar
@@ -266,13 +282,17 @@ PolarView : ValuesView {
 
 	// called from other methods which set new plotMin/Max
 	prRescalePlotData { |refresh=true|
+		var data;
+
 		dataScalar ?? {"data has not yet been set".warn; ^this};
+
+		data = if (displayAbsoluteValue) { dataScalar.abs } { dataScalar };
 
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
-			plotSpec.copy.unmap(dataScalar.ampdb);
+			plotSpec.copy.unmap(data.ampdb);
 		} {
-			plotSpec.copy.unmap(dataScalar);
+			plotSpec.copy.unmap(data);
 		};
 
 		refresh.if{this.refresh};
@@ -410,6 +430,7 @@ PolarPlotLayer : ValueViewLayer {
 			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
 			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
 			strokeType:  \line,        // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
+			negPhaseColors: [0.3]
 		)
 	}
 
