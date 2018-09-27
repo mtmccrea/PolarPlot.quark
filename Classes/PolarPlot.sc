@@ -245,7 +245,7 @@ PolarView : ValuesView {
 
 			if (plotUnits == \db) {
 				// switched to \db scaling
-				newMin = min ?? {max(plotSpec.minval.ampdb, clipDbLow)};
+				newMin = min ?? { max(plotSpec.minval.ampdb, clipDbLow) };
 				newMax = max ?? plotSpec.maxval.ampdb;
 			} { // switched to \scalar scaling from \db
 				newMin = min ?? plotSpec.minval.dbamp;
@@ -254,13 +254,13 @@ PolarView : ValuesView {
 
 			// updates plotData
 			this.plotSpec_(
-				ControlSpec(newMin, newMax, plotSpec.warp), // spec always linear, even if data is \db
-				true, false // rescale now, don't refresh yet
+				ControlSpec(newMin, newMax, plotSpec.warp),  // spec always linear, even if data is \db
+				true, false                                  // rescale now, don't refresh yet
 			);
 
 			// reset the grid lines to new plotUnits
 			this.levelGridLinesAt_(
-				if (plotUnits == \db, {gridVals.ampdb}, {gridVals.dbamp}),
+				if (plotUnits == \db) { gridVals.ampdb } { gridVals.dbamp },
 				true  // refresh
 			);
 		};
@@ -435,10 +435,10 @@ PolarPlotLayer : ValueViewLayer {
 	}
 
 	stroke {
-		var zeroPos, dirFlag, maxRad;
-		zeroPos = view.prZeroPos;
-		dirFlag = view.dirFlag;
-		maxRad = view.prPlotRad;
+		var vZeroPos, vMaxRad, vThetas;
+		vZeroPos = view.prZeroPos;
+		vMaxRad = view.prPlotRad;
+		vThetas = view.thetas * view.dirFlag;
 
 		Pen.push;
 		Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
@@ -453,12 +453,12 @@ PolarPlotLayer : ValueViewLayer {
 
 			Pen.push;
 			// generate data point coordinates
-			pnts = dataset.collect{|val, j|
+			pnts = dataset.collect{ |val, j|
 				Polar(
-					val * maxRad,
+					val * vMaxRad,
 					// wrapAt in case number of theta arrays is mismatched with rhoArrays
 					// e.g. one theta array is provided, like [0,2pi], for multiple datasets
-					zeroPos + (view.thetas.wrapAt(i)[j] * dirFlag)
+					vZeroPos + vThetas.wrapAt(i)[j]
 				).asPoint;
 			};
 
