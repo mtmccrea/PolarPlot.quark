@@ -2,12 +2,13 @@
 TODO
 - \circle data points, for the option of re-creating rE-style directivity displays
 - invert values so that minimum values are at the radius, max values are at the center
-- support a notion of phase, as in a figure-of-eight mic pattern
 - optionally resample the data when plotting for radially uniform sample points, instead of
 -      one point per data point
 - calculate plot/view dimensions based on actual plot outline (if it's not a circle)
--      e.g. a semi-circular or wedge plot
+-      so plot is maximized no matter the shape, e.g. a semi-circular or wedge plot
 - optionally show lattitude scale in a separate, adjacent view that aligns with plot
+- toggle data channels on and off
+- add both phase colors to legend
 */
 
 PolarView : ValuesView {
@@ -19,26 +20,26 @@ PolarView : ValuesView {
 
 	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
 	var startAngle, sweepLength, zeroPos;
-	var <prZeroPos;       // position of zero used internally, provides the point of reference for prStartAngle
-	var <prStartAngle;    // start angle used internally, reference 0 to the RIGHT, as used in addAnnularWedge
-	var <prSweepLength;   // sweep length used internally, = sweepLength * dirFlag
-	var <plotRadius;      // normalized, 1 = outer edge of the view
-	var <plotUnits;       // units in which the data is plotted
-	var <dataUnits;       // units in which the data is provided by user
-	var <minVal, <maxVal; // min/maxVal, specified in plotUnits
-	var <plotData;        // data to plot, stored as scalar values, normalized to plotMin/Max
-	var <plotSpec;        // ControlSpec that maps data to plotting range
-	var <dataScalar;      // input data, stored as scalar values
-	var dataMin, dataMax; // min/max of input data, in scalar values
-	var <gridVals;        // values at which level grid lines are drawn, in plotUnits
-	var <plotGrid;        // gridVals, normalized to plotMin/Max
-	var <thetaLines;      // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
-	var <prThetaLines;    // theta positions of longitude lines, in drawing coordinates
-	var <prPlotCen;       // center of the plot, offset by the title
-	var <prPlotRad;       // radius of the plot, scaled by plotRadius arg
+	var <prZeroPos;        // position of zero used internally, provides the point of reference for prStartAngle
+	var <prStartAngle;     // start angle used internally, reference 0 to the RIGHT, as used in addAnnularWedge
+	var <prSweepLength;    // sweep length used internally, = sweepLength * dirFlag
+	var <plotRadius;       // normalized, 1 = outer edge of the view
+	var <plotUnits;        // units in which the data is plotted
+	var <dataUnits;        // units in which the data is provided by user
+	var <minVal, <maxVal;  // min/maxVal, specified in plotUnits
+	var <plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max (unmapped by spec)
+	var <plotSpec;         // ControlSpec that maps data to plotting range
+	var <dataScalar;       // input data, stored as scalar values
+	var dataMin, dataMax;  // min/max of input data, in scalar values
+	var <gridVals;         // values at which level grid lines are drawn, in plotUnits
+	var <plotGrid;         // gridVals, normalized to plotMin/Max
+	var <thetaLines;       // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
+	var <prThetaLines;     // theta positions of longitude lines, in drawing coordinates
+	var <prPlotCen;        // center of the plot, offset by the title
+	var <prPlotRad;        // radius of the plot, scaled by plotRadius arg
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
-	var <displayAbsoluteValue = false; // display the data as the absolute values (of the scalar values)
+	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
 
 	// zeroPos reference 0 is UP, advances in direction, in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
@@ -114,15 +115,17 @@ PolarView : ValuesView {
 	drawInThisOrder {
 		if (background.p.show) {background.fill};
 		if (grid.p.show) {grid.stroke};
-		if (plots.p.show) {plots.stroke};
-		if (legend.p.show) {legend.fill; legend.stroke};
+		thetas !? { // make sure there's data
+			if (plots.p.show) {plots.stroke};
+			if (legend.p.show) {legend.fill; legend.stroke};
+		};
 		if (title.p.show) {title.fill; title.stroke;};
 	}
 
 	// TODO: How to handle negative values? (e.g. phase of figure of 8 polar pattern...)
 	//    always .abs?
 	//    through origin? if through origin, alter color based on sign/phase?
-	data_ { |thetaArray, rhoArray, units = \scalar, displayAbs, refresh=true|
+	data_ { |thetaArray, rhoArray, units = \scalar, bipolar, refresh=true|
 		var shapetest, dataSizes;
 		var thetaEnv, dataStep;
 		// var flatData, thetaEnv, dataStep;
@@ -166,17 +169,17 @@ PolarView : ValuesView {
 
 		thetas = thetaArray;
 
-		// set dataMin/Max based on displayAbsoluteValue flag
-		this.displayAbsoluteValue_(displayAbs ?? displayAbsoluteValue, refresh);
+		// set dataMin/Max based on bipolar flag
+		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
 	}
 
-	displayAbsoluteValue_ { |bool, refresh=true|
+	bipolar_ { |bool, refresh=true|
 		var flatData;
 
-		displayAbsoluteValue = bool;
+		bipolar = bool;
 
 		flatData = dataScalar.flat;
-		if (displayAbsoluteValue) { flatData = flatData.abs };
+		if (bipolar) { flatData = flatData.abs };
 
 		dataMin = flatData.minItem;
 		dataMax = flatData.maxItem;
@@ -286,7 +289,7 @@ PolarView : ValuesView {
 
 		dataScalar ?? {"data has not yet been set".warn; ^this};
 
-		data = if (displayAbsoluteValue) { dataScalar.abs } { dataScalar };
+		data = if (bipolar) { dataScalar.abs } { dataScalar };
 
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
@@ -430,12 +433,12 @@ PolarPlotLayer : ValueViewLayer {
 			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
 			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
 			strokeType:  \line,        // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
-			negPhaseColors: [0.3]
+			negativeColors: [0.09]     // Colors or floats which create a hue shift from the plotColor
 		)
 	}
 
 	stroke {
-		var vZeroPos, vMaxRad, vThetas;
+		var vZeroPos, vMaxRad, vThetas, vScalarData, pntCnt;
 		vZeroPos = view.prZeroPos;
 		vMaxRad = view.prPlotRad;
 		vThetas = view.thetas * view.dirFlag;
@@ -448,10 +451,20 @@ PolarPlotLayer : ValueViewLayer {
 			p.plotColors = [p.plotColors]
 		};
 
-		view.plotData.do{ |dataset, i|
-			var sType, pnts;
+		if (view.bipolar) {
+			// prep the data: split source data into positive and
+			// negative clumps to reference the sign of the data
+			vScalarData = view.dataScalar.collect({ |chanData|
+				chanData.separate{ |a, b| a.isPositive.xor(b.isPositive) }
+			});
+		};
 
-			Pen.push;
+		view.plotData.do{ |dataset, i|
+			var sType, pnts, thisColor, negColor, strokeLine, dataColors;
+
+			pntCnt = 0;
+
+			// Pen.push;
 			// generate data point coordinates
 			pnts = dataset.collect{ |val, j|
 				Polar(
@@ -462,43 +475,135 @@ PolarPlotLayer : ValueViewLayer {
 				).asPoint;
 			};
 
-			// fill area under data points
-			if (p.fill) {
-				Pen.moveTo(pnts[0]);
-				pnts.do{|pnt| Pen.lineTo(pnt)};
-				Pen.fillColor_(p.plotColors.asArray.wrapAt(i).copy.alpha_(p.fillAlpha));
-				Pen.fill
+			sType = p.strokeType.asArray.wrapAt(i);
+			strokeLine = (sType != \points);
+			if (sType.isKindOf(FloatArray)) {
+				Pen.lineDash_(sType)
 			};
 
-			// draw lines/points/dashes
-			sType = p.strokeType.asArray.wrapAt(i);
-			case
-			{sType == \points} { // data points as circles
-				var rad, rect;
-				rad = p.pointRad ?? {p.strokeWidth};
-				rect = [0,0,rad*2, rad*2].asRect; // data point circle
-				pnts.do{|pnt| Pen.addOval(rect.center_(pnt))};
-			}
-			{(sType == \line) or: (sType.isKindOf(FloatArray))} {
-				// data points as a line, or dashed line
-				Pen.moveTo(pnts[0]);
-				pnts.do{|pnt| Pen.lineTo(pnt)};
-
-				if(sType.isKindOf(FloatArray)) {
-					Pen.lineDash_(sType)
-				};
-			}
-			{warn(format("PolarPlotLayer (PolarView): unknow strokeType property: %\n", sType))};
-
-			Pen.strokeColor_(p.plotColors.asArray.wrapAt(i));
+			Pen.moveTo(pnts[0]);
 			Pen.width_(p.strokeWidth);
-			Pen.stroke;
-			Pen.pop;
+
+			if (view.bipolar) {
+
+				/* bipolar = true, data reflects off 0 */
+
+				// create data structure to store colors for data segments
+				// for both fill and \points
+				dataColors = Array.newClear(vScalarData[i].size);
+
+				if (p.fill or: { strokeLine }) { // pen path needed
+
+					vScalarData[i].do{ |clumpedData, j|
+						clumpedData.do{
+							Pen.lineTo(pnts[pntCnt]);
+							pntCnt = pntCnt + 1;
+						};
+
+						// make data pass through zero if another segment follows
+						if (j < (vScalarData[i].size - 1)) {
+							Pen.lineTo(0@0);
+						};
+
+						// choose color of this segment based on sign of data clump
+						thisColor = this.prGetDataColor(clumpedData[0].sign, i);
+						Pen.strokeColor_(thisColor);
+
+						if (p.fill) {
+							dataColors[j] = thisColor; // store in case needed by \points below
+
+							Pen.fillColor_(thisColor.copy.alpha_(thisColor.alpha * p.fillAlpha));
+							if (strokeLine) {
+								Pen.fillStroke;
+							} {
+								Pen.fill;
+							}
+						} {
+							Pen.stroke
+						};
+					};
+				};
+
+				if (strokeLine.not) { // stroke == \points
+					var rad, rect, thisColor;
+					pntCnt = 0;
+					rad = p.pointRad ?? p.strokeWidth;
+					rect = [0,0,rad*2, rad*2].asRect;  // data point circle
+
+					vScalarData[i].do{ |clumpedData, j|
+						thisColor = if (p.fill) {
+							dataColors[j]
+						} {
+							this.prGetDataColor(clumpedData[0].sign, i);
+						};
+						Pen.strokeColor_(thisColor);
+
+						clumpedData.do{
+							Pen.addOval(rect.center_(pnts[pntCnt]));
+							pntCnt = pntCnt + 1;
+						};
+						Pen.stroke;
+					}
+				}
+			} {
+				/* bipolar = false */
+
+				thisColor = p.plotColors.asArray.wrapAt(i);
+				Pen.strokeColor_(thisColor);
+
+				if (p.fill or: { strokeLine }) {
+					// create Pen path
+					pnts.do{ |pnt| Pen.lineTo(pnt) };
+
+					if (p.fill) {
+						Pen.fillColor_(
+							thisColor.copy.alpha_(thisColor.alpha * p.fillAlpha)
+						);
+						if (strokeLine) {
+							Pen.fillStroke;
+						} {
+							Pen.fill;
+						}
+					} {
+						Pen.stroke;
+					};
+				};
+
+				if (strokeLine.not) { // stroke == \points
+					var rad, rect;
+					rad = p.pointRad ?? p.strokeWidth;
+					rect = [0,0,rad*2, rad*2].asRect;  // data point circle
+					pnts.do{ |pnt| Pen.addOval(rect.center_(pnt)) };
+					Pen.stroke;
+				}
+			};
 		};
 		Pen.pop;
 	}
 
 	fill {}
+
+	prGetDataColor { |sign, chanIdx|
+		var negColor, posColor;
+
+		^if (sign.isPositive) {
+			p.plotColors.asArray.wrapAt(chanIdx)
+		} {
+			// negative values
+			negColor = p.negativeColors.asArray.wrapAt(chanIdx);
+
+			if (negColor.isKindOf(Color)) {
+				negColor
+			} {
+				// negColor is a number, create a Color
+				// with value shift from plotColor
+				posColor = p.plotColors.asArray.wrapAt(chanIdx);
+				// Color.hsv(*(posColor.asHSV[2] = posColor.asHSV[2] * negColor));
+				Color.hsv(*(posColor.asHSV[0] = (posColor.asHSV[0] + negColor).wrap(0, 0.999)));
+			};
+		};
+	}
+
 }
 
 PolarGridLayer : ValueViewLayer {
@@ -550,7 +655,7 @@ PolarGridLayer : ValueViewLayer {
 		};
 
 		/* lattitude labels */
-		if(p.showLatVals) {
+		if (p.showLatVals) {
 			var str, theta, strBnds, corner, thetaMod;
 
 			Pen.push;
@@ -581,7 +686,7 @@ PolarGridLayer : ValueViewLayer {
 		Pen.pop;
 
 		/* longitude labels */
-		if(p.showLonVals) {
+		if (p.showLonVals) {
 			var str, strVal, theta, strBnds, txtCen, thetaMod;
 
 			Pen.push;
@@ -592,7 +697,7 @@ PolarGridLayer : ValueViewLayer {
 
 				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
 				strVal = view.thetaLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
-				str = if(strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
+				str = if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
 
@@ -743,7 +848,7 @@ PolarLegendLayer : ValueViewLayer {
 		var sumW, sumH, spacing, margin;
 
 		nElem = view.plotData.size;
-		if(nElem > 0) {
+		if (nElem > 0) {
 			Pen.push;
 			Pen.translate(view.cen.x, view.cen.y);
 
