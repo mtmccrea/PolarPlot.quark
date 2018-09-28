@@ -46,9 +46,11 @@ PolarView : ValuesView {
 	// plotUnits = \scalar or \db
 	*new {
 		|parent, bounds, specs, initVals, startAngle, sweepLength, direction = \cw, zeroPos = \up, plotRadius=0.9, plotUnits = \scalar|
-		^super.new(parent, bounds, specs, initVals)
-		.init(startAngle, sweepLength, direction, zeroPos, plotRadius, plotUnits);
+		^super.new(parent, bounds, specs, initVals).init(
+			startAngle, sweepLength, direction, zeroPos, plotRadius, plotUnits
+		);
 	}
+
 
 	init { |argStartAngle, argSweepLength, argDirection, argZeroPos, argPlotRadius, argPlotUnits|
 
@@ -68,18 +70,20 @@ PolarView : ValuesView {
 		dirFlag = switch (direction, \cw, {1}, \ccw, {-1});
 		zeroPos = if (argZeroPos.isKindOf(Number)) {argZeroPos} {
 			switch(argZeroPos,
-				\up, {0},
-				\down, {pi},
-				\left, {-0.5pi * dirFlag},
-				\right, {0.5pi * dirFlag}
+				\up,    { 0 },
+				\down,  { pi },
+				\left,  { -0.5pi * dirFlag },
+				\right, { 0.5pi * dirFlag }
 			)
 		};
 		startAngle = argStartAngle ?? 0;     // TODO: revist default start angle, get it from data
 		sweepLength = argSweepLength ?? 2pi; // TODO: revist default sweep length, get it from data
 
 		plotRadius = argPlotRadius;
-
-		plotSpec = switch(plotUnits, \db, {[-70, 0, \lin]}, \scalar, {[0,1]}).asSpec;
+		plotSpec = switch(plotUnits,
+			\db,     { [-70, 0, \lin] },
+			\scalar, { [0,1] }
+		).asSpec;
 		gridVals = (plotSpec.minval, plotSpec.minval + ((plotSpec.maxval-plotSpec.minval)/5) .. plotSpec.maxval);
 		plotGrid = gridVals.collect(plotSpec.unmap(_));
 		dataMin = plotSpec.minval;
@@ -89,6 +93,7 @@ PolarView : ValuesView {
 		this.thetaGridLines_(pi/4, false);
 		this.defineMouseActions;
 	}
+
 
 	drawFunc {
 		^{  |v|
@@ -112,23 +117,21 @@ PolarView : ValuesView {
 		};
 	}
 
+
 	drawInThisOrder {
-		if (background.p.show) {background.fill};
-		if (grid.p.show) {grid.stroke};
+		if (background.p.show) { background.fill };
+		if (grid.p.show) { grid.stroke };
 		thetas !? { // make sure there's data
-			if (plots.p.show) {plots.stroke};
-			if (legend.p.show) {legend.fill; legend.stroke};
+			if (plots.p.show) { plots.stroke };
+			if (legend.p.show) { legend.fill; legend.stroke; };
 		};
-		if (title.p.show) {title.fill; title.stroke;};
+		if (title.p.show) { title.fill; title.stroke; };
 	}
 
-	// TODO: How to handle negative values? (e.g. phase of figure of 8 polar pattern...)
-	//    always .abs?
-	//    through origin? if through origin, alter color based on sign/phase?
+
 	data_ { |thetaArray, rhoArray, units = \scalar, bipolar, refresh=true|
 		var shapetest, dataSizes;
 		var thetaEnv, dataStep;
-		// var flatData, thetaEnv, dataStep;
 
 		// support 2D arrays: force into shape [1, datasize], i.e. [[1,2,3],[1,3,7]]
 		if (rhoArray.shape.size == 1) {
@@ -173,6 +176,7 @@ PolarView : ValuesView {
 		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
 	}
 
+
 	bipolar_ { |bool, refresh=true|
 		var flatData;
 
@@ -194,9 +198,6 @@ PolarView : ValuesView {
 		this.plotMin_(min, false, false);
 		this.plotMax_(max, true, refresh); // rescale data and refresh
 	}
-
-	plotMin {^plotSpec.minval}
-	plotMax {^plotSpec.maxval}
 
 	// min should be set in plotUnits
 	// use plotMinMax_ is setting both min and max
@@ -240,6 +241,10 @@ PolarView : ValuesView {
 		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
+
+	plotMin { ^plotSpec.minval }
+	plotMax { ^plotSpec.maxval }
+
 	// \db or \scalar
 	plotUnits_ { |dbOrScalar, min, max|
 		var newMin, newMax;
@@ -250,7 +255,8 @@ PolarView : ValuesView {
 				// switched to \db scaling
 				newMin = min ?? { max(plotSpec.minval.ampdb, clipDbLow) };
 				newMax = max ?? plotSpec.maxval.ampdb;
-			} { // switched to \scalar scaling from \db
+			} {
+				// switched to \scalar scaling from \db
 				newMin = min ?? plotSpec.minval.dbamp;
 				newMax = max ?? plotSpec.maxval.dbamp;
 			};
@@ -269,11 +275,13 @@ PolarView : ValuesView {
 		};
 	}
 
+
 	plotSpec_ { |spec, rescaleNow, refresh|
 		plotSpec = spec;
 		// TODO: handle switching the plotUnits with the new spec
-		rescaleNow.if{this.prRescalePlotData(refresh:true)};
+		rescaleNow.if{ this.prRescalePlotData(refresh:true) };
 	}
+
 
 	plotWarp_ { |warp|
 		// TODO:
@@ -287,10 +295,9 @@ PolarView : ValuesView {
 	prRescalePlotData { |refresh=true|
 		var data;
 
-		dataScalar ?? {"data has not yet been set".warn; ^this};
+		dataScalar ?? { "data has not yet been set".warn; ^this };
 
 		data = if (bipolar) { dataScalar.abs } { dataScalar };
-
 		plotData = if (plotUnits == \db) {
 			// dataScalar is scalar, spec is in db, so convert unmap
 			plotSpec.copy.unmap(data.ampdb);
@@ -298,18 +305,21 @@ PolarView : ValuesView {
 			plotSpec.copy.unmap(data);
 		};
 
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
+
 
 	defineMouseActions {
 		// mouseDownAction = { |v, x, y| };
 		// mouseMoveAction = { |v, x, y| };
 	}
 
+
 	plotRadius_ { |normRadius|
 		plotRadius = normRadius;
 		this.refresh;
 	}
+
 
 	direction_ { |dir=\cw|
 		direction = dir;
@@ -331,7 +341,7 @@ PolarView : ValuesView {
 		};
 		prZeroPos = -0.5pi + (zeroPos * dirFlag);
 		this.startAngle_(startAngle, false);
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
 
 	// startAngle is from zeroDirection, advancing in direction
@@ -341,13 +351,14 @@ PolarView : ValuesView {
 		thetaLines !? {
 			this.thetaGridLinesAt_(thetaLines, false); // reset the thera grid lines
 		};
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
+
 
 	sweepLength_ { |radians=2pi, refresh=true|
 		sweepLength = radians;
 		prSweepLength = sweepLength * dirFlag;
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
 
 	// in plotUnits, grid lines created from "from",
@@ -355,13 +366,13 @@ PolarView : ValuesView {
 	levelGridLines_ { |from, every, until, refresh=true|
 		var f, u, step;
 		f = switch(from,
-			\max, {this.plotMax},
-			\min, {this.plotMin},
+			\max, { this.plotMax },
+			\min, { this.plotMin },
 			{from}
 		);
 		u = switch(until,
-			\max, {this.plotMax},
-			\min, {this.plotMin},
+			\max, { this.plotMax },
+			\min, { this.plotMin },
 			{until}
 		);
 		step = if (f<u) {every} {every.neg};
@@ -377,7 +388,7 @@ PolarView : ValuesView {
 
 		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required? it fails without it, bug?
 
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
 
 	// NOTE: spacing in radians (currently)
@@ -399,7 +410,7 @@ PolarView : ValuesView {
 		};
 		prThetaLines = prZeroPos + (thetaLines * dirFlag);
 
-		refresh.if{this.refresh};
+		refresh.if{ this.refresh };
 	}
 }
 
