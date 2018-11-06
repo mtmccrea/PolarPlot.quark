@@ -25,16 +25,14 @@ PolarView : ValuesView {
 	var <prSweepLength;    // sweep length used internally, = sweepLength * dirFlag
 	var <plotRadius;       // normalized, 1 = outer edge of the view
 	var <plotUnits;        // units in which the data is plotted
-	var <dataUnits;        // units in which the data is provided by user
-	var <minVal, <maxVal;  // min/maxVal, specified in plotUnits
 	var <plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max (unmapped by spec)
 	var <plotSpec;         // ControlSpec that maps data to plotting range
-	var <dataScalar;       // input data, stored as scalar values
+	var <scalarData;       // input data, stored as scalar values
 	var dataMin, dataMax;  // min/max of input data, in scalar values
-	var <gridVals;         // values at which level grid lines are drawn, in plotUnits
-	var <plotGrid;         // gridVals, normalized to plotMin/Max
-	var <thetaLines;       // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
-	var <prThetaLines;     // theta positions of longitude lines, in drawing coordinates
+	var <levelGridLines;   // values at which level grid lines are drawn, in plotUnits
+	var <levelGridNorm;    // levelGridLines, normalized to plotMin/Max
+	var <thetaGridLines;   // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
+	var <prThetaGridLines; // theta positions of longitude lines, in drawing coordinates
 	var <prPlotCen;        // center of the plot, offset by the title
 	var <prPlotRad;        // radius of the plot, scaled by plotRadius arg
 
@@ -84,8 +82,8 @@ PolarView : ValuesView {
 			\db,     { [-70, 0, \lin] },
 			\scalar, { [0,1] }
 		).asSpec;
-		gridVals = (plotSpec.minval, plotSpec.minval + ((plotSpec.maxval-plotSpec.minval)/5) .. plotSpec.maxval);
-		plotGrid = gridVals.collect(plotSpec.unmap(_));
+		levelGridLines = (plotSpec.minval, plotSpec.minval + ((plotSpec.maxval-plotSpec.minval)/5) .. plotSpec.maxval);
+		levelGridNorm = levelGridLines.collect(plotSpec.unmap(_));
 		dataMin = plotSpec.minval;
 		dataMax = plotSpec.maxval;
 
@@ -129,48 +127,65 @@ PolarView : ValuesView {
 	}
 
 
-	data_ { |thetaArray, rhoArray, units = \scalar, bipolar, refresh=true|
+	data_ { |dataArray, thetaArray, units = \scalar, bipolar=false, refresh=true|
 		var shapetest, dataSizes;
 		var thetaEnv, dataStep;
 
 		// support 2D arrays: force into shape [1, datasize], i.e. [[1,2,3],[1,3,7]]
-		if (rhoArray.shape.size == 1) {
-			rhoArray = [rhoArray];
+		if (dataArray.shape.size == 1) {
+			dataArray = [dataArray];
 		};
 
-		// check that multiple datasets are the same size
-		// TODO: don't make this a requirement
-		dataSizes = rhoArray.collect(_.size);
-		shapetest = dataSizes.every(_ == rhoArray[0].size);
-		shapetest.not.if{
-			warn(format(
-				"[PolarView:-data_] Size of datasets are mismatched: "
-				"%, extending datasets for identical sizes",
-				rhoArray.collect(_.size))
-			);
-			// stutter the last values to make all array sizes equal
-			rhoArray = rhoArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
-		};
+		// // check that multiple datasets are the same size
+		// // TODO: don't make this a requirement
+		// dataSizes = dataArray.collect(_.size);
+		// shapetest = dataSizes.every(_ == dataArray[0].size);
+		// shapetest.not.if{
+		// 	warn(format(
+		// 		"[PolarView:-data_] Size of datasets are mismatched: "
+		// 		"%, extending datasets for identical sizes",
+		// 		dataArray.collect(_.size))
+		// 	);
+		// 	// stutter the last values to make all array sizes equal
+		// 	dataArray = dataArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
+		// };
 
-		dataScalar = if (units==\db) { rhoArray.dbamp } { rhoArray };
+		scalarData = if (units==\db) { dataArray.dbamp } { dataArray };
 
 		if (thetaArray.shape.size == 1) {
 			thetaArray = [thetaArray];
 		};
 
-		thetaArray.do{ |thetaArr, i|
+		// thetaArray.do{ |thetaArr, i|
+		//
+		// 	if (thetaArr.size != dataArray[i].size) {
+		// 		// thetaArray assumed to be breakpoints (likely start/end points)
+		// 		// create an "envelope" from breakpoints and generate theta values
+		// 		// for each rho value
+		// 		dataStep = (dataArray[i].size - 1).reciprocal;
+		// 		thetaEnv = Env(thetaArr, (thetaArr.size-1).reciprocal, \lin);
+		// 		thetaArray[i] = dataArray[i].collect{|val, j| thetaEnv.at(dataStep*j)};
+		// 	};
+		// };
 
-			if (thetaArr.size != rhoArray[i].size) {
+		thetas = Array.newClear(dataArray.size);
+
+		dataArray.do{ |dArr, i|
+			var thArr = thetaArray.wrapAt(i);
+			i.postln;
+			postf("dArr: %...\n", dArr.keep(10));
+			postf("thArr: %\n", thArr);
+			if (dArr.size != thArr.size) {
 				// thetaArray assumed to be breakpoints (likely start/end points)
 				// create an "envelope" from breakpoints and generate theta values
 				// for each rho value
-				dataStep = (rhoArray[i].size - 1).reciprocal;
-				thetaEnv = Env(thetaArr, (thetaArr.size-1).reciprocal, \lin);
-				thetaArray[i] = rhoArray[i].collect{|val, j| thetaEnv.at(dataStep*j)};
+				dataStep = (dArr.size - 1).reciprocal;
+				thetaEnv = Env(thArr, (thArr.size-1).reciprocal, \lin);
+				thetas[i] = dArr.collect{ |val, j| thetaEnv.at(dataStep*j) };
 			};
 		};
 
-		thetas = thetaArray;
+		// thetas = thetaArray;
 
 		// set dataMin/Max based on bipolar flag
 		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
@@ -182,14 +197,14 @@ PolarView : ValuesView {
 
 		bipolar = bool;
 
-		flatData = dataScalar.flat;
+		flatData = scalarData.flat;
 		if (bipolar) { flatData = flatData.abs };
 
 		dataMin = flatData.minItem;
 		dataMax = flatData.maxItem;
 
 		// re-calc plotData based on min/max
-		this.plotMinMax_(minVal, maxVal, refresh);
+		this.plotMinMax_(dataMin, dataMax, refresh);
 	}
 
 	// preferred way of setting min and max together
@@ -205,7 +220,11 @@ PolarView : ValuesView {
 		var plotMin;
 
 		plotMin = if (min == \auto or: { min.isNil }) {
-			if (plotUnits == \db) { max(dataMin.ampdb, clipDbLow) } { dataMin }
+			if (plotUnits == \db) {
+				max(dataMin.ampdb, clipDbLow)
+			} {
+				dataMin
+			}
 		} {
 			min
 		};
@@ -216,7 +235,7 @@ PolarView : ValuesView {
 			refresh
 		);
 
-		this.levelGridLinesAt_(this.gridVals, false);
+		this.levelGridLinesAt_(this.levelGridLines, false);
 		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
@@ -237,7 +256,7 @@ PolarView : ValuesView {
 			refresh
 		);
 
-		this.levelGridLinesAt_(this.gridVals, false);
+		this.levelGridLinesAt_(this.levelGridLines, false);
 		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
@@ -263,13 +282,13 @@ PolarView : ValuesView {
 
 			// updates plotData
 			this.plotSpec_(
-				ControlSpec(newMin, newMax, plotSpec.warp),  // spec always linear, even if data is \db
-				true, false                                  // rescale now, don't refresh yet
+				ControlSpec(newMin, newMax, plotSpec.warp), // spec always linear, even if data is \db
+				true, false // rescale now, don't refresh yet
 			);
 
 			// reset the grid lines to new plotUnits
 			this.levelGridLinesAt_(
-				if (plotUnits == \db) { gridVals.ampdb } { gridVals.dbamp },
+				if (plotUnits == \db) { levelGridLines.ampdb } { levelGridLines.dbamp },
 				true  // refresh
 			);
 		};
@@ -295,11 +314,11 @@ PolarView : ValuesView {
 	prRescalePlotData { |refresh=true|
 		var data;
 
-		dataScalar ?? { "data has not yet been set".warn; ^this };
+		scalarData ?? { "data has not yet been set".warn; ^this };
 
-		data = if (bipolar) { dataScalar.abs } { dataScalar };
+		data = if (bipolar) { scalarData.abs } { scalarData };
 		plotData = if (plotUnits == \db) {
-			// dataScalar is scalar, spec is in db, so convert unmap
+			// scalarData is scalar, spec is in db, so convert unmap
 			plotSpec.copy.unmap(data.ampdb);
 		} {
 			plotSpec.copy.unmap(data);
@@ -344,12 +363,12 @@ PolarView : ValuesView {
 		refresh.if{ this.refresh };
 	}
 
-	// startAngle is from zeroDirection, advancing in direction
+	// startAngle is from zeroPos, advancing in direction
 	startAngle_ {|radians=0, refresh=true|
 		startAngle = radians;
 		prStartAngle = prZeroPos + (startAngle*dirFlag);
-		thetaLines !? {
-			this.thetaGridLinesAt_(thetaLines, false); // reset the thera grid lines
+		thetaGridLines !? {
+			this.thetaGridLinesAt_(thetaGridLines, false); // reset the thera grid lines
 		};
 		refresh.if{ this.refresh };
 	}
@@ -362,53 +381,52 @@ PolarView : ValuesView {
 	}
 
 	// in plotUnits, grid lines created from "from",
-	// stepping "every", until reaching "until"
-	levelGridLines_ { |from, every, until, refresh=true|
-		var f, u, step;
+	// stepping "spacing", until reaching "until"
+	levelGridLines_ { |spacing, from = \min, to = \max, refresh=true|
+		var f, t, step;
 		f = switch(from,
 			\max, { this.plotMax },
 			\min, { this.plotMin },
-			{from}
+			{ from }
 		);
-		u = switch(until,
+		t = switch(to,
 			\max, { this.plotMax },
 			\min, { this.plotMin },
-			{until}
+			{ to }
 		);
-		step = if (f<u) {every} {every.neg};
-		gridVals = (f, f+step .. u);
-		this.levelGridLinesAt_(gridVals, refresh);
+		step = if (f < t) { spacing } { spacing.neg };
+		this.levelGridLinesAt_((f, f+step .. t), refresh);
 	}
 
 	// an array of levels for the grid lines, in plotUnits
 	levelGridLinesAt_ { |levelArray, refresh|
-		gridVals = levelArray.select{ |level|
+		levelGridLines = levelArray.select{ |level|
 			level.inRange(this.plotMin, this.plotMax) // clip to plotMin/Max
 		};
 
-		plotGrid = plotSpec.copy.unmap(gridVals); // TODO: why is .copy required? it fails without it, bug?
+		levelGridNorm = plotSpec.copy.unmap(levelGridLines); // TODO: why is .copy required? it fails without it, bug?
 
 		refresh.if{ this.refresh };
 	}
 
 	// NOTE: spacing in radians (currently)
 	thetaGridLines_ { |spacing, refresh=true|
-		thetaLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
+		thetaGridLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
 		// avoid duplicate lines at 0, 2pi
-		if ((thetaLines.first % 2pi) == (thetaLines.last % 2pi), {
-			thetaLines = thetaLines.keep(thetaLines.size-1)
+		if ((thetaGridLines.first % 2pi) == (thetaGridLines.last % 2pi), {
+			thetaGridLines = thetaGridLines.keep(thetaGridLines.size-1)
 		});
 
-		this.thetaGridLinesAt_(thetaLines, refresh);
+		this.thetaGridLinesAt_(thetaGridLines, refresh);
 	}
 
 	// an array of thetaPositions, relative to 'zeroPos' and 'direction'
-	thetaGridLinesAt_ { |thetaArray, refresh|
-		thetaLines = thetaArray.select{ |theta|
+	thetaGridLinesAt_ { |thetaArray, refresh=true|
+		thetaGridLines = thetaArray.select{ |theta|
 			// clip to range of plot
 			theta.inRange(startAngle, startAngle+sweepLength)
 		};
-		prThetaLines = prZeroPos + (thetaLines * dirFlag);
+		prThetaGridLines = prZeroPos + (thetaGridLines * dirFlag);
 
 		refresh.if{ this.refresh };
 	}
@@ -465,7 +483,7 @@ PolarPlotLayer : ValueViewLayer {
 		if (view.bipolar) {
 			// prep the data: split source data into positive and
 			// negative clumps to reference the sign of the data
-			vScalarData = view.dataScalar.collect({ |chanData|
+			vScalarData = view.scalarData.collect({ |chanData|
 				chanData.separate{ |a, b| a.isPositive.xor(b.isPositive) }
 			});
 		};
@@ -480,7 +498,7 @@ PolarPlotLayer : ValueViewLayer {
 			pnts = dataset.collect{ |val, j|
 				Polar(
 					val * vMaxRad,
-					// wrapAt in case number of theta arrays is mismatched with rhoArrays
+					// wrapAt in case number of theta arrays is mismatched with dataArrays
 					// e.g. one theta array is provided, like [0,2pi], for multiple datasets
 					vZeroPos + vThetas.wrapAt(i)[j]
 				).asPoint;
@@ -647,7 +665,7 @@ PolarGridLayer : ValueViewLayer {
 		Pen.width_(p.strokeWidth);
 
 		if (p.showLatLines) {
-			view.plotGrid.do{ |level|
+			view.levelGridNorm.do{ |level|
 				Pen.addArc(view.prPlotCen, level * rad, view.prStartAngle, view.prSweepLength);
 			};
 			Pen.stroke;
@@ -657,7 +675,7 @@ PolarGridLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
-			view.prThetaLines.do{ |theta|
+			view.prThetaGridLines.do{ |theta|
 				Pen.moveTo(0@0);
 				Pen.lineTo(Polar(rad, theta).asPoint);
 			};
@@ -675,9 +693,9 @@ PolarGridLayer : ValueViewLayer {
 			theta = view.prZeroPos + (p.latTxtPos * view.dirFlag);
 			thetaMod = theta % 2pi;
 
-			view.plotGrid.do{ |level, i|
+			view.levelGridNorm.do{ |level, i|
 				corner = Polar(level * rad, theta).asPoint;
-				str = view.gridVals[i].round(p.latTxtRound).asString;
+				str = view.levelGridLines[i].round(p.latTxtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -703,11 +721,11 @@ PolarGridLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
-			view.prThetaLines.do{ |theta, i|
+			view.prThetaGridLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
 				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
-				strVal = view.thetaLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
+				strVal = view.thetaGridLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
 				str = if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
@@ -996,7 +1014,7 @@ v = PolarView(bounds: Size(500, 500).asRect, specs: [[0,2pi].asSpec],
 	plotUnits: \scalar
 ).front;
 v.title.txt_("Two plots: sine and cosine");
-v.data_([0, 2pi], [sinPi((0,0.005 .. 1)), cosPi((0,0.005 .. 1))], \scalar); // sine window
+v.data_([sinPi((0,0.005 .. 1)), cosPi((0,0.005 .. 1))], [0, 2pi], \scalar); // sine window
 v.plots.plotColors = 2.collect{Color.rand};
 v.legend.labels_(["sine", "cosine"]);
 )
