@@ -15,7 +15,7 @@ PolarView : ValuesView {
 	// set in drawFunc, for access by drawing layers
 	var <bnds, <cen, <minDim;
 	// layers
-	var <background, <plots, <grid, <legend, <title;
+	var <plots, <grid, <legend, <title;
 	var <thetas, data; // data points and their corresponding theta positions
 
 	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
@@ -38,12 +38,13 @@ PolarView : ValuesView {
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
+	var thetaGridLinesSpacing;
 
-	// zeroPos reference 0 is UP, advances in direction, in radians
+	// zeroPos reference 0 is UP, advances in "direction", in radians
 	// startAngle position, reference zeroPos, advances in direction, in radians
 	// plotUnits = \scalar or \db
 	*new {
-		|parent, bounds, specs, initVals, startAngle, sweepLength, direction = \cw, zeroPos = \up, plotRadius=0.9, plotUnits = \scalar|
+		|parent, bounds, specs, initVals, startAngle = 0, sweepLength = 2pi, direction = \cw, zeroPos = \up, plotRadius = 0.9, plotUnits = \scalar|
 		^super.new(parent, bounds, specs, initVals).init(
 			startAngle, sweepLength, direction, zeroPos, plotRadius, plotUnits
 		);
@@ -54,14 +55,14 @@ PolarView : ValuesView {
 
 		// REQUIRED: in subclass init, initialize drawing layers
 		layers = [
-			PolarBackgroundLayer, PolarPlotLayer, PolarGridLayer,
+			PolarPlotLayer, PolarGridLayer,
 			PolarLegendLayer, PolarTitleLayer
 		].collect({ |class|
 			class.new(this, class.properties)
 		});
 
 		// unpack the layers list into individual variables
-		#background, plots, grid, legend, title = layers;
+		#plots, grid, legend, title = layers;
 
 		plotUnits = argPlotUnits;
 		direction = argDirection;
@@ -87,8 +88,9 @@ PolarView : ValuesView {
 		dataMin = plotSpec.minval;
 		dataMax = plotSpec.maxval;
 
+		thetaGridLinesSpacing = pi/8;
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
-		this.thetaGridLines_(pi/4, false);
+		this.thetaGridLines_(thetaGridLinesSpacing, false);
 		this.defineMouseActions;
 	}
 
@@ -117,7 +119,6 @@ PolarView : ValuesView {
 
 
 	drawInThisOrder {
-		if (background.p.show) { background.fill };
 		if (grid.p.show) { grid.stroke };
 		thetas !? { // make sure there's data
 			if (plots.p.show) { plots.stroke };
@@ -127,7 +128,7 @@ PolarView : ValuesView {
 	}
 
 
-	data_ { |dataArray, thetaArray, units = \scalar, bipolar=false, refresh=true|
+	data_ { |dataArray, thetaArray, units = \scalar, bipolar=false, refresh = true|
 		var shapetest, dataSizes;
 		var thetaEnv, dataStep;
 
@@ -192,7 +193,7 @@ PolarView : ValuesView {
 	}
 
 
-	bipolar_ { |bool, refresh=true|
+	bipolar_ { |bool, refresh = true|
 		var flatData;
 
 		bipolar = bool;
@@ -209,14 +210,14 @@ PolarView : ValuesView {
 
 	// preferred way of setting min and max together
 	// min and max should be set in plotUnits
-	plotMinMax_ { |min, max, refresh=true|
+	plotMinMax_ { |min, max, refresh = true|
 		this.plotMin_(min, false, false);
 		this.plotMax_(max, true, refresh); // rescale data and refresh
 	}
 
 	// min should be set in plotUnits
 	// use plotMinMax_ is setting both min and max
-	plotMin_ { |min, rescaleNow=true, refresh=true|
+	plotMin_ { |min, rescaleNow=true, refresh = true|
 		var plotMin;
 
 		plotMin = if (min == \auto or: { min.isNil }) {
@@ -241,7 +242,7 @@ PolarView : ValuesView {
 
 	// max should be set in the plotUnits
 	// use plotMinMax_ is setting both min and max
-	plotMax_ { |max, rescaleNow=true, refresh=true|
+	plotMax_ { |max, rescaleNow=true, refresh = true|
 		var plotMax;
 
 		plotMax = if (max == \auto or: { max.isNil }) {
@@ -311,7 +312,7 @@ PolarView : ValuesView {
 	}
 
 	// called from other methods which set new plotMin/Max
-	prRescalePlotData { |refresh=true|
+	prRescalePlotData { |refresh = true|
 		var data;
 
 		scalarData ?? { "data has not yet been set".warn; ^this };
@@ -340,17 +341,17 @@ PolarView : ValuesView {
 	}
 
 
-	direction_ { |dir=\cw|
+	direction_ { |dir=\cw, refresh = true|
 		direction = dir;
 		dirFlag = switch (direction, \cw, {1}, \ccw, {-1});
-		this.sweepLength_(sweepLength, false);
 		this.zeroPos_(zeroPos, false);  // updates prZeroPos, startAngle
-		this.refresh;
+		this.sweepLength_(sweepLength, false);
+		refresh.if{ this.refresh };
 	}
 
 	// This serves as the reference for start angle
 	// When setting this value, reference 0 up, direction \cw
-	zeroPos_ { |radiansOrDir=0, refresh=true|
+	zeroPos_ { |radiansOrDir=0, refresh = true|
 		zeroPos = if (radiansOrDir.isKindOf(Number)) {
 			radiansOrDir
 		} {
@@ -364,25 +365,32 @@ PolarView : ValuesView {
 	}
 
 	// startAngle is from zeroPos, advancing in direction
-	startAngle_ {|radians=0, refresh=true|
+	startAngle_ {|radians=0, refresh = true|
 		startAngle = radians;
 		prStartAngle = prZeroPos + (startAngle*dirFlag);
-		thetaGridLines !? {
-			this.thetaGridLinesAt_(thetaGridLines, false); // reset the thera grid lines
+
+		if (thetaGridLinesSpacing.notNil) {
+			this.thetaGridLines_(thetaGridLinesSpacing, refresh)
+		} {
+			this.thetaGridLinesAt_(thetaGridLines, refresh)
 		};
-		refresh.if{ this.refresh };
 	}
 
 
-	sweepLength_ { |radians=2pi, refresh=true|
+	sweepLength_ { |radians=2pi, refresh = true|
 		sweepLength = radians;
 		prSweepLength = sweepLength * dirFlag;
-		refresh.if{ this.refresh };
+
+		if (thetaGridLinesSpacing.notNil) {
+			this.thetaGridLines_(thetaGridLinesSpacing, refresh)
+		} {
+			this.thetaGridLinesAt_(thetaGridLines, refresh)
+		};
 	}
 
 	// in plotUnits, grid lines created from "from",
 	// stepping "spacing", until reaching "until"
-	levelGridLines_ { |spacing, from = \min, to = \max, refresh=true|
+	levelGridLines_ { |spacing, from = \min, to = \max, refresh = true|
 		var f, t, step;
 		f = switch(from,
 			\max, { this.plotMax },
@@ -410,46 +418,42 @@ PolarView : ValuesView {
 	}
 
 	// NOTE: spacing in radians (currently)
-	thetaGridLines_ { |spacing, refresh=true|
+	thetaGridLines_ { |spacing, refresh = true|
 		thetaGridLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
-		// avoid duplicate lines at 0, 2pi
+		// avoid duplicate lines at 2pi apart
 		if ((thetaGridLines.first % 2pi) == (thetaGridLines.last % 2pi), {
 			thetaGridLines = thetaGridLines.keep(thetaGridLines.size-1)
 		});
 
-		this.thetaGridLinesAt_(thetaGridLines, refresh);
+		thetaGridLinesSpacing = spacing;
+		this.prThetaGridLinesAt_(thetaGridLines, refresh);
 	}
 
-	// an array of thetaPositions, relative to 'zeroPos' and 'direction'
-	thetaGridLinesAt_ { |thetaArray, refresh=true|
+	// an array of thetaPositions
+	thetaGridLinesAt_ { |thetaArray, refresh = true|
+		thetaGridLinesSpacing = nil;
+		this.prThetaGridLinesAt_(thetaArray, refresh);
+	}
+
+	prThetaGridLinesAt_ { |thetaArray, refresh = true|
 		thetaGridLines = thetaArray.select{ |theta|
 			// clip to range of plot
 			theta.inRange(startAngle, startAngle+sweepLength)
 		};
+		"thetaGridLines * dirFlag".postln;
+		thetaGridLines.postln;
+		dirFlag.postln;
 		prThetaGridLines = prZeroPos + (thetaGridLines * dirFlag);
 
 		refresh.if{ this.refresh };
 	}
+
+	background_ { |color| userView.background_(color) }
+	background { ^userView.background }
+
 }
 
 
-PolarBackgroundLayer  : ValueViewLayer {
-
-	*properties {
-		^(
-			show:      true,
-			fillColor: Color.white,
-		)
-	}
-
-	fill {
-		Pen.push;
-		Pen.fillColor_(p.fillColor);
-		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
-		Pen.fill;
-		Pen.pop;
-	}
-}
 
 PolarPlotLayer : ValueViewLayer {
 	*properties {
@@ -635,22 +639,42 @@ PolarPlotLayer : ValueViewLayer {
 
 }
 
+PolarBackgroundLayer  : ValueViewLayer {
+
+	*properties {
+		^(
+			show:      true,
+			fillColor: Color.white,
+		)
+	}
+
+	fill {
+		Pen.push;
+		Pen.fillColor_(p.fillColor);
+		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
+		Pen.fill;
+		Pen.pop;
+	}
+}
+
 PolarGridLayer : ValueViewLayer {
 	*properties {
 		^(
 			show:         true,
+			fill:         true,
+			fillColor:    Color.white,
 			showLonLines: true,
 			showLatLines: true,
 			strokeColor:  Color.gray.alpha_(0.4), // grid color
 			showLonVals:  true,
 			showLatVals:  true,
 			latTxtColor:  Color.gray.alpha_(0.3),
-			lonTxtColor:  Color.black,
+			lonTxtColor:  Color.gray,
 			latTxtRound:  0.01,
 			lonTxtRound:  1,
-			lonTxtWrap:   [0, 2pi],
-			latTxtPos:    pi/4,  // radian angle of latitude labels, relative to zeroPos
-			lonTxtOffset: 0.065, // percentage of the radius
+			lonTxtWrap:   [0, 2pi], // wrap the grid's longitude text labels around these, in radians
+			latTxtAng:    pi/4,     // radian angle of latitude labels, relative to zeroPos
+			lonTxtOffset: 0.065,    // percentage of the radius
 			strokeWidth:  1,
 		)
 	}
@@ -659,6 +683,13 @@ PolarGridLayer : ValueViewLayer {
 		var rad = view.prPlotRad;
 
 		Pen.push;
+
+		// background fill of grid
+		if (p.fill) {
+			Pen.fillColor_(p.fillColor);
+			Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
+			Pen.fill;
+		};
 
 		/* lattitude lines */
 		Pen.strokeColor_(p.strokeColor);
@@ -690,7 +721,7 @@ PolarGridLayer : ValueViewLayer {
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
-			theta = view.prZeroPos + (p.latTxtPos * view.dirFlag);
+			theta = view.prZeroPos + (p.latTxtAng * view.dirFlag);
 			thetaMod = theta % 2pi;
 
 			view.levelGridNorm.do{ |level, i|
@@ -716,16 +747,19 @@ PolarGridLayer : ValueViewLayer {
 
 		/* longitude labels */
 		if (p.showLonVals) {
-			var str, strVal, theta, strBnds, txtCen, thetaMod;
+			var str, strVal, theta, strBnds, txtCen, thetaMod, wrapBnds, rnd;
 
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
+
+			wrapBnds = p.lonTxtWrap * 1.001; // prevent edge line labels from wrapping, e.g. 45.degrad.wrap(*[-45, 45].degrad)
+			rnd = p.lonTxtRound;
 
 			view.prThetaGridLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
 				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
-				strVal = view.thetaGridLines[i].wrap(*p.lonTxtWrap).raddeg.round(p.lonTxtRound);
+				strVal = view.thetaGridLines[i].wrap(*wrapBnds).raddeg.round(rnd);
 				str = if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
@@ -749,7 +783,7 @@ PolarLegendLayer : ValueViewLayer {
 			txtColor:    Color.gray,
 			align:       \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
 			inset:       10,           // inset between legend and view's edge
-			margin:      10,            // inset margin between entries and border of the legend
+			margin:      10,           // inset margin between entries and border of the legend
 			spacing:     8,            // spacing between legend entries
 			layout:      \vertical,    // horizontal, vertical
 			lineLength:  15,           // length of sample plot line
