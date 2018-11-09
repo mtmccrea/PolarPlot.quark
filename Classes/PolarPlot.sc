@@ -88,7 +88,7 @@ PolarView : ValuesView {
 		dataMin = plotSpec.minval;
 		dataMax = plotSpec.maxval;
 
-		thetaGridLinesSpacing = pi/8;
+		thetaGridLinesSpacing = pi/6;
 		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
 		this.thetaGridLines_(thetaGridLinesSpacing, false);
 		this.defineMouseActions;
@@ -565,13 +565,14 @@ PolarPlotLayer : ValueViewLayer {
 			strokeWidth: 2,
 			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
 			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
-			strokeType:  \line,        // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
+			strokeTypes: [\line],      // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
 			negativeColors: [0.09]     // Colors or floats which create a hue shift from the plotColor
 		)
 	}
 
 	stroke {
-		var vZeroPos, vMaxRad, vThetas, vScalarData, pntCnt;
+		var vZeroPos, vMaxRad, vThetas, sTypes, vScalarData, pntCnt;
+
 		vZeroPos = view.prZeroPos;
 		vMaxRad = view.prPlotRad;
 		vThetas = view.thetas * view.dirFlag;
@@ -583,6 +584,12 @@ PolarPlotLayer : ValueViewLayer {
 		if (p.plotColors.isKindOf(Color)) {
 			p.plotColors = [p.plotColors]
 		};
+		if (p.strokeTypes.isKindOf(FloatArray)) {
+			// be sure a FloatArray is wrapped into an Array
+			p.strokeTypes = [p.strokeTypes]
+		};
+		sTypes = p.strokeTypes.asArray;
+
 
 		if (view.bipolar) {
 			// prep the data: split source data into positive and
@@ -608,7 +615,7 @@ PolarPlotLayer : ValueViewLayer {
 				).asPoint;
 			};
 
-			sType = p.strokeType.asArray.wrapAt(i);
+			sType = sTypes.wrapAt(i);
 			strokeLine = (sType != \points);
 			if (sType.isKindOf(FloatArray)) {
 				Pen.lineDash_(sType)
@@ -773,7 +780,8 @@ PolarGridLayer : ValueViewLayer {
 			latTxtRound:  0.01,
 			lonTxtRound:  1,
 			lonTxtWrap:   [0, 2pi], // wrap the grid's longitude text labels around these, in radians
-			latTxtAng:    pi/4,     // radian angle of latitude labels, relative to zeroPos
+			lonTxtUnits:  \degrees, // or \radians, or \pi
+			latTxtAng:    0,        // radian angle of latitude labels, relative to zeroPos
 			lonTxtOffset: 0.065,    // percentage of the radius
 			strokeWidth:  1,
 		)
@@ -859,8 +867,19 @@ PolarGridLayer : ValueViewLayer {
 				thetaMod = theta % 2pi;
 
 				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
-				strVal = view.thetaGridLines[i].wrap(*wrapBnds).raddeg.round(rnd);
-				str = if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
+				str = switch(p.lonTxtUnits,
+					\degrees, {
+						strVal = view.thetaGridLines[i].wrap(*wrapBnds).raddeg.round(rnd);
+						if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
+					},
+					\radians, {
+						strVal = view.thetaGridLines[i].wrap(*wrapBnds).round(rnd);
+						if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
+					},
+					\pi, {
+						(view.thetaGridLines[i].wrap(*wrapBnds) / pi).round(rnd) + "π";
+					}
+				);
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
 
@@ -893,12 +912,12 @@ PolarLegendLayer : ValueViewLayer {
 			labels:      ["Plot 1"],
 			showBorder:  true,
 			borderColor: Color.gray,
-			borderWidth: 2,
+			borderWidth: 1,
 		)
 	}
 
 	stroke {
-		var lineCols, cursor, h_2, stx;
+		var lineCols, cursor, h_2, stx, stcursor;
 		var pntRad, strokeTypes, cRect;
 		var cStep, numcSteps, cOff; // for strokeTupe == \points
 
@@ -922,9 +941,9 @@ PolarLegendLayer : ValueViewLayer {
 
 			Pen.width = view.plots.strokeWidth;
 			lineCols = view.plots.plotColors.asArray;
-			strokeTypes = view.plots.strokeType.asArray;
+			strokeTypes = view.plots.p.strokeTypes.asArray;
 			pntRad = view.plots.pointRad;
-			h_2 = txtRects[0].height/2;
+			// h_2 = txtRects[0].height/2;
 			cRect = [0,0,pntRad*2,pntRad*2].asRect;
 
 			if (strokeTypes.any(_ == \points)) {
@@ -939,7 +958,16 @@ PolarLegendLayer : ValueViewLayer {
 
 			Pen.push;
 			nElem.do{ |i|
-				Pen.strokeColor_(lineCols.wrapAt(i));
+				var nloops;
+				if (view.bipolar) { // bipolar draws both pos and neg color lines
+					nloops = 2;
+					h_2 = txtRects[0].height/3;
+				} {
+					nloops = 1;
+					h_2 = txtRects[0].height/2;
+				};
+
+				// Pen.strokeColor_(lineCols.wrapAt(i));
 
 				if (strokeTypes.wrapAt(i).isKindOf(FloatArray)) {
 					Pen.lineDash_(strokeTypes.wrapAt(i))
@@ -947,57 +975,70 @@ PolarLegendLayer : ValueViewLayer {
 
 				switch(p.layout,
 					\horizontal, {
-						// w = margin-lineLength-lineSpacing-text length-spacing-lineLength-lineSpacing-text length-margin, etc
-						if (strokeTypes.wrapAt(i) == \points) {
-							cursor = cursor + (cOff@h_2);
-							Pen.addOval(cRect.center_(cursor));
-							numcSteps.do {
-								cursor = cursor + (cStep@0);
+						stcursor = cursor.copy;
+
+						nloops.do { |j| // loop twice in the case of two lines for bipolar data
+							h_2 = h_2 * (j+1);
+							Pen.strokeColor_( view.plots.prGetDataColor(1 - (2*j), i));
+							cursor = stcursor;
+
+							// w = margin-lineLength-lineSpacing-text length-spacing-lineLength-lineSpacing-text length-margin, etc
+							if (strokeTypes.wrapAt(i) == \points) {
+								cursor = cursor + (cOff@h_2);
 								Pen.addOval(cRect.center_(cursor));
+								numcSteps.do {
+									cursor = cursor + (cStep@0);
+									Pen.addOval(cRect.center_(cursor));
+								};
+								cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
+							} { // lines or dashes
+								cursor = cursor + (0@h_2);
+								Pen.moveTo(cursor);
+								cursor = cursor + (p.lineLength@0);
+								Pen.lineTo(cursor);
+								cursor = cursor + (p.lineSpacing@h_2.neg);
 							};
-							cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
-						} { // lines or dashes
-							cursor = cursor + (0@h_2);
-							Pen.moveTo(cursor);
-							cursor = cursor + (p.lineLength@0);
-							Pen.lineTo(cursor);
-							cursor = cursor + (p.lineSpacing@h_2.neg);
+							Pen.stroke;
 						};
-						Pen.stroke;
 
 						Pen.stringLeftJustIn(
 							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
 							font, p.txtColor
 						);
 						cursor.x = cursor.x + txtRects[i].width + p.spacing;
-
 					},
 					\vertical, {
-						// h = margin-txtHeight-spacing-txtHeight-margin
-						stx = cursor.x;
+						stcursor = cursor.copy;
 
-						if (strokeTypes.wrapAt(i) == \points) {
-							cursor = cursor + (cOff@h_2);
-							Pen.addOval(cRect.center_(cursor));
-							numcSteps.do {
-								cursor = cursor + (cStep@0); // step
+						nloops.do { |j| // loop twice in the case of two lines for bipolar data
+							h_2 = h_2 * (j+1);
+							Pen.strokeColor_(view.plots.prGetDataColor(1 - (2*j), i));
+							cursor = stcursor;
+
+							// h = margin-txtHeight-spacing-txtHeight-margin
+							if (strokeTypes.wrapAt(i) == \points) {
+								cursor = cursor + (cOff@h_2);
 								Pen.addOval(cRect.center_(cursor));
+								numcSteps.do {
+									cursor = cursor + (cStep@0); // step
+									Pen.addOval(cRect.center_(cursor));
+								};
+								cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
+							} { // lines or dashes
+								cursor = cursor + (0@h_2);
+								Pen.moveTo(cursor);
+								cursor = cursor + (p.lineLength@0);
+								Pen.lineTo(cursor);
+								cursor = cursor + (p.lineSpacing@h_2.neg);
 							};
-							cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
-						} {
-							cursor = cursor + (0@h_2);
-							Pen.moveTo(cursor);
-							cursor = cursor + (p.lineLength@0);
-							Pen.lineTo(cursor);
-							cursor = cursor + (p.lineSpacing@h_2.neg);
+							Pen.stroke;
 						};
-						Pen.stroke;
 
 						Pen.stringLeftJustIn(
 							labels[i], txtRects[i].left_(cursor.x).top_(cursor.y),
 							font, p.txtColor
 						);
-						cursor.x = stx; // jump back to starting x
+						cursor.x = stcursor.x; // jump back to starting x
 						cursor.y = cursor.y + txtRects[0].height + p.spacing;
 					}
 				);
@@ -1079,7 +1120,7 @@ PolarTitleLayer : ValueViewLayer {
 		^(
 			show:        true,
 			fillColor:   Color.white,
-			txtColor:    Color.black,
+			txtColor:    Color.gray,
 			align:       \top,
 			inset:       10,    // pixel distance inset from the top of the view
 			margin:      15,    // margin around text and title border
@@ -1088,7 +1129,7 @@ PolarTitleLayer : ValueViewLayer {
 			fontSize:    18,
 			showBorder:  true,
 			borderColor: Color.gray,
-			borderWidth: 2,
+			borderWidth: 1,
 		)
 	}
 
