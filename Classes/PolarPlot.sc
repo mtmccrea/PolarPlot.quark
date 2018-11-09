@@ -97,21 +97,51 @@ PolarView : ValuesView {
 
 	drawFunc {
 		^{  |v|
-			var titleOffset, h;
+			var vw, vh, pw, ph; // view width, height, plot width, height
+			var titleOffset;
+			var plotBnds, plotOrigin, originOffset;
+			var viewHRatio, plotRatio;
+
 			// "global" instance vars, accessed by ValueViewLayers
 			bnds = v.bounds;
+			cen = bnds.center; // center of the view, NOT offset by the space used by the title
 			if (title.p.show) {
 				title.calcBounds;
 				titleOffset = 2 * title.p.inset + title.bgRect.height;
-				h = bnds.height - titleOffset;
+				vh = bnds.height - titleOffset;
 			} {
 				titleOffset = 0;
-				h = bnds.height
+				vh = bnds.height
 			};
-			cen = bnds.center;
-			minDim = min(bnds.width, h);      // scale down for space around edge
-			prPlotRad = minDim / 2 * plotRadius;
+			vw = bnds.width;
+
+			// TODO: the following calculation of the center of the plot is close
+			// but not quite right for plots with sweep length of less than 2 pi
+			// only noticeable in certain view size ratios.
+
+			// get bounding rect of plot (normalized -1 > 1) for max width or height of 2
+			// origin of this rect is the plot origin offset.
+			plotBnds = this.prPlotBounds;
+			plotOrigin = plotBnds.origin;
+			pw = plotBnds.width;
+			ph = plotBnds.height;
+			viewHRatio = vh/vw;
+			plotRatio = ph/pw;
+			minDim = min(vw, vh);
+			prPlotRad = if (plotRatio > viewHRatio) {
+				vh / ph * plotRadius;
+			} {
+				vw / pw * plotRadius;
+			};
+			// center of the view, offset by the title space
 			prPlotCen = Point(cen.x, max(cen.y, titleOffset + (minDim/2)));
+			// update plot center to be the origin of the plot, which
+			// may not be in the center of the plot's bounding rect
+			originOffset = (
+				(plotOrigin.x * prPlotRad / 2) @
+				(plotOrigin.y * prPlotRad.neg / 2)
+			);
+			prPlotCen = prPlotCen - originOffset;
 
 			this.drawInThisOrder;
 		};
@@ -173,9 +203,6 @@ PolarView : ValuesView {
 
 		dataArray.do{ |dArr, i|
 			var thArr = thetaArray.wrapAt(i);
-			i.postln;
-			postf("dArr: %...\n", dArr.keep(10));
-			postf("thArr: %\n", thArr);
 			if (dArr.size != thArr.size) {
 				// thetaArray assumed to be breakpoints (likely start/end points)
 				// create an "envelope" from breakpoints and generate theta values
@@ -359,7 +386,7 @@ PolarView : ValuesView {
 				\up, {0}, \down, {pi}, \left, {-0.5pi}, \right, {0.5pi}
 			)
 		};
-		prZeroPos = -0.5pi + (zeroPos * dirFlag);
+		prZeroPos = -0.5pi + zeroPos; // (zeroPos * dirFlag);
 		this.startAngle_(startAngle, false);
 		refresh.if{ this.refresh };
 	}
@@ -440,19 +467,92 @@ PolarView : ValuesView {
 			// clip to range of plot
 			theta.inRange(startAngle, startAngle+sweepLength)
 		};
-		"thetaGridLines * dirFlag".postln;
-		thetaGridLines.postln;
-		dirFlag.postln;
 		prThetaGridLines = prZeroPos + (thetaGridLines * dirFlag);
-
 		refresh.if{ this.refresh };
 	}
 
 	background_ { |color| userView.background_(color) }
 	background { ^userView.background }
 
-}
+	// return bool whether an angle lies within the sweep range
+	prAngInRange { |ang|
+		var end, newstart, newend;
+		var st, sweep;
 
+		st = prStartAngle;
+		sweep = prSweepLength;
+
+		if (sweep.isNegative) {
+			end = st + sweep;
+			newstart = end.wrap(0, 2pi);
+			newend = newstart + sweep.abs;
+		} {
+			newstart = st.wrap(0, 2pi);
+			newend = newstart + sweep;
+		};
+		ang = ang.wrap(0, 2pi);
+		// [newstart, newend, ang].round(1e-4).postln;
+
+		^(ang.inRange(newstart, newend) or: {(ang + 2pi).inRange(newstart, newend)});
+	}
+
+	// calculate the bounding rect around the plot
+	// radius is 1, so coords are top 0@1, bottom 0@-1, right 1@0, left -1@0
+	prPlotBounds {
+		var st, end, minAng, maxAng, xs, ys;
+		var minx, miny, maxx, maxy, width, height;
+		var pnts = [];
+
+		st = prStartAngle;
+		end = (prStartAngle + prSweepLength).wrap(2pi.neg, 2pi);
+		minAng = min(st, end);
+		maxAng = max(st, end);
+		// right
+		if (this.prAngInRange(0)) {
+			pnts = pnts.add(1 @ 0)
+		};
+		// down
+		if (this.prAngInRange(0.5pi)) {
+			pnts = pnts.add(0 @ -1)
+		};
+		// up
+		if (this.prAngInRange(-0.5pi)) {
+			pnts = pnts.add(0 @ 1)
+		};
+		// left
+		if (this.prAngInRange(pi)) {
+			pnts = pnts.add(-1 @ 0)
+		};
+		// zero
+		if (this.prAngInRange(prZeroPos)) {
+			pnts = pnts.add(Point(cos(prZeroPos), sin(prZeroPos).neg));
+		};
+		// start
+		pnts = pnts.add(Point(cos(st), sin(st).neg));
+		// end
+		pnts = pnts.add(Point(cos(end), sin(end).neg));
+		// origin
+		pnts = pnts.add(Point(0, 0));
+
+		xs = pnts.collect(_.x);
+		ys = pnts.collect(_.y);
+		minx = xs.minItem;
+		maxx = xs.maxItem;
+		miny = ys.minItem;
+		maxy = ys.maxItem;
+		width = maxx - minx;
+		height = maxy - miny;
+		// [minx, maxx, miny, maxy, width, height].postln;
+
+		// origin of this rect describes location of plot origin (center)
+		// within the plot bounding rect, from bottom left
+		^Rect(
+			maxx + minx,  // diff between min and max x
+			miny + maxy,  // diff between min and max y
+			width, height
+		);
+	}
+}
 
 
 PolarPlotLayer : ValueViewLayer {
