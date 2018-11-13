@@ -8,7 +8,6 @@ TODO
 -      so plot is maximized no matter the shape, e.g. a semi-circular or wedge plot
 - optionally show lattitude scale in a separate, adjacent view that aligns with plot
 - toggle data channels on and off
-- add both phase colors to legend
 */
 
 PolarView : ValuesView {
@@ -18,40 +17,39 @@ PolarView : ValuesView {
 	var <plots, <grid, <legend, <title;
 	var <thetas, data; // data points and their corresponding theta positions
 
-	var <direction, <dirFlag;  // dirFlag: cw=1, ccw=-1
-	var startAngle, sweepLength, zeroPos;
+	var <thetaDirection, <dirFlag;  // dirFlag: cw=1, ccw=-1
+	var thetaMin, thetaMax, thetaRange; // min, max, range of the theta axis of the plot
+	var <rhoMin, <rhoMax;    // min and max rho of the plot, can be nil (auto), if not nil, it will clip data. Note: different than plotMin/Max
+	var thetaZeroPosition;
 	var <prZeroPos;        // position of zero used internally, provides the point of reference for prStartAngle
 	var <prStartAngle;     // start angle used internally, reference 0 to the RIGHT, as used in addAnnularWedge
-	var <prSweepLength;    // sweep length used internally, = sweepLength * dirFlag
+	var <prThetaRange;     // sweep length used internally, = thetaRange * dirFlag
 	var <plotRadius;       // normalized, 1 = outer edge of the view
 	var <plotUnits;        // units in which the data is plotted
-	var <plotData;         // data to plot, stored as scalar values, normalized to plotMin/Max (unmapped by spec)
-	var <plotSpec;         // ControlSpec that maps data to plotting range
+	var <plotData;         // data to plot, stored as scalar values, normalized to rhoMin/Max (unmapped by spec)
+	var <rhoSpec;          // ControlSpec that maps data to plotting range
 	var <scalarData;       // input data, stored as scalar values
-	var dataMin, dataMax;  // min/max of input data, in scalar values
-	var <levelGridLines;   // values at which level grid lines are drawn, in plotUnits
-	var <levelGridNorm;    // levelGridLines, normalized to plotMin/Max
-	var <thetaGridLines;   // theta positions of longitude lines, relative to 'zeroPos' and 'direction;
+	var <dataScalarMin, <dataScalarMax;  // min/max of input data, in scalar values
+	var <rhoGridLines;     // values at which level grid lines are drawn, in plotUnits
+	var <rhoGridLinesNorm; // rhoGridLines, normalized to rhoMin/Max
+	var <thetaGridLines;   // theta positions of longitude lines, relative to 'thetaZeroPosition' and 'thetaDirection';
 	var <prThetaGridLines; // theta positions of longitude lines, in drawing coordinates
 	var <prPlotCen;        // center of the plot, offset by the title
 	var <prPlotRad;        // radius of the plot, scaled by plotRadius arg
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
-	var thetaGridLinesSpacing;
+	var thetaGridLineSpacing;
 
-	// zeroPos reference 0 is UP, advances in "direction", in radians
-	// startAngle position, reference zeroPos, advances in direction, in radians
-	// plotUnits = \scalar or \db
 	*new {
-		|parent, bounds, specs, initVals, startAngle = 0, sweepLength = 2pi, direction = \cw, zeroPos = \up, plotRadius = 0.9, plotUnits = \scalar|
-		^super.new(parent, bounds, specs, initVals).init(
-			startAngle, sweepLength, direction, zeroPos, plotRadius, plotUnits
+		|parent, bounds, data = ([0]), thetaArray = ([0, 2pi]), thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \cw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
+		^super.new(parent, bounds, [thetaBounds.asSpec], data).init(
+			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition, plotRadius, dataUnits, plotUnits, bipolar
 		);
 	}
 
 
-	init { |argStartAngle, argSweepLength, argDirection, argZeroPos, argPlotRadius, argPlotUnits|
+	init { |argThetaArray, argThetaBounds, argRhoBounds, argThetaDirection, argThetaZeroPosition, argPlotRadius, argDataUnits, argPlotUnits, argBipolar|
 
 		// REQUIRED: in subclass init, initialize drawing layers
 		layers = [
@@ -64,33 +62,66 @@ PolarView : ValuesView {
 		// unpack the layers list into individual variables
 		#plots, grid, legend, title = layers;
 
-		plotUnits = argPlotUnits;
-		direction = argDirection;
-		dirFlag = switch (direction, \cw, {1}, \ccw, {-1});
-		zeroPos = if (argZeroPos.isKindOf(Number)) {argZeroPos} {
-			switch(argZeroPos,
-				\up,    { 0 },
-				\down,  { pi },
-				\left,  { -0.5pi * dirFlag },
-				\right, { 0.5pi * dirFlag }
+		plotRadius = argPlotRadius;
+		plotUnits = argPlotUnits ?? { argDataUnits };
+		thetaDirection = argThetaDirection;
+		dirFlag = switch (thetaDirection, \cw, {1}, \ccw, {-1});
+		thetaZeroPosition = if (argThetaZeroPosition.isKindOf(Number)) {argThetaZeroPosition} {
+			switch(argThetaZeroPosition,
+				\top,    { 0 },
+				\bottom, { pi },
+				\left,   { -0.5pi * dirFlag },
+				\right,  { 0.5pi * dirFlag }
 			)
 		};
-		startAngle = argStartAngle ?? 0;     // TODO: revist default start angle, get it from data
-		sweepLength = argSweepLength ?? 2pi; // TODO: revist default sweep length, get it from data
 
-		plotRadius = argPlotRadius;
-		plotSpec = switch(plotUnits,
-			\db,     { [-70, 0, \lin] },
-			\scalar, { [0,1] }
-		).asSpec;
-		levelGridLines = (plotSpec.minval, plotSpec.minval + ((plotSpec.maxval-plotSpec.minval)/5) .. plotSpec.maxval);
-		levelGridNorm = levelGridLines.collect(plotSpec.unmap(_));
-		dataMin = plotSpec.minval;
-		dataMax = plotSpec.maxval;
+		thetaMin = argThetaBounds.minItem;
+		thetaMax = argThetaBounds.maxItem;
+		thetaRange = thetaMax - thetaMin;
 
-		thetaGridLinesSpacing = pi/6;
-		this.direction_(direction); // sets zeroPos, startAngle, sweepLength
-		this.thetaGridLines_(thetaGridLinesSpacing, false);
+		argRhoBounds !? {
+			if (argRhoBounds.includes(nil)) {
+				#rhoMin, rhoMax = argRhoBounds;
+			} {
+				rhoMin = argRhoBounds.minItem;
+				rhoMax = argRhoBounds.maxItem;
+			};
+		};
+		if (plotUnits == \db and: { rhoMin.notNil }) {
+			rhoMin = max(rhoMin, clipDbLow)
+		};
+
+
+		bipolar = argBipolar;
+		// this.prCalcDataBounds;
+		// this.rhoMinMax_(rhoMin, rhoMax, refresh: false); // sets rhoSpec, nil for min or max will detect from data
+		//
+		// rhoSpec = switch (plotUnits,
+		// 	\db,     { [-70, 0, \lin] },
+		// 	\scalar, { [0,1] }
+		// ).asSpec;
+
+
+		// TODO: should this be actual data min / max nor the spec?
+		// dataScalarMin = rhoSpec.minval;
+		// dataScalarMax = rhoSpec.maxval;
+
+
+		this.data_(values, argThetaArray, argDataUnits, bipolar, refresh: false);
+
+		// rhoGridLines = (rhoSpec.minval, rhoSpec.minval + ((rhoSpec.maxval-rhoSpec.minval)/5) .. rhoSpec.maxval);
+		// rhoGridLinesNorm = rhoGridLines.collect(rhoSpec.unmap(_));
+
+		// TODO:
+		// // ensure data encoded with correct units
+		// rhoSpec = specs;
+		// this.data_(values,
+		// 	[].collect({|spc| [spc.minval, spc.maxval]}),
+		// argDataUnits, argBipolar, refresh: false);
+
+		thetaGridLineSpacing = pi/6;
+		this.thetaDirection_(thetaDirection); // sets thetaZeroPosition, thetaMin, thetaRange
+		this.thetaGridLines_(thetaGridLineSpacing, false);
 		this.defineMouseActions;
 	}
 
@@ -158,7 +189,7 @@ PolarView : ValuesView {
 	}
 
 
-	data_ { |dataArray, thetaArray, units = \scalar, bipolar=false, refresh = true|
+	data_ { |dataArray, thetaArray, units = \scalar, bipolar, refresh = true|
 		var shapetest, dataSizes;
 		var thetaEnv, dataStep;
 
@@ -167,37 +198,11 @@ PolarView : ValuesView {
 			dataArray = [dataArray];
 		};
 
-		// // check that multiple datasets are the same size
-		// // TODO: don't make this a requirement
-		// dataSizes = dataArray.collect(_.size);
-		// shapetest = dataSizes.every(_ == dataArray[0].size);
-		// shapetest.not.if{
-		// 	warn(format(
-		// 		"[PolarView:-data_] Size of datasets are mismatched: "
-		// 		"%, extending datasets for identical sizes",
-		// 		dataArray.collect(_.size))
-		// 	);
-		// 	// stutter the last values to make all array sizes equal
-		// 	dataArray = dataArray.collect{|arr| arr.extend(dataSizes.maxItem, arr.last)};
-		// };
-
-		scalarData = if (units==\db) { dataArray.dbamp } { dataArray };
+		scalarData = if (units == \db) { dataArray.dbamp } { dataArray };
 
 		if (thetaArray.shape.size == 1) {
 			thetaArray = [thetaArray];
 		};
-
-		// thetaArray.do{ |thetaArr, i|
-		//
-		// 	if (thetaArr.size != dataArray[i].size) {
-		// 		// thetaArray assumed to be breakpoints (likely start/end points)
-		// 		// create an "envelope" from breakpoints and generate theta values
-		// 		// for each rho value
-		// 		dataStep = (dataArray[i].size - 1).reciprocal;
-		// 		thetaEnv = Env(thetaArr, (thetaArr.size-1).reciprocal, \lin);
-		// 		thetaArray[i] = dataArray[i].collect{|val, j| thetaEnv.at(dataStep*j)};
-		// 	};
-		// };
 
 		thetas = Array.newClear(dataArray.size);
 
@@ -213,132 +218,184 @@ PolarView : ValuesView {
 			};
 		};
 
-		// thetas = thetaArray;
-
-		// set dataMin/Max based on bipolar flag
+		// set dataScalarMin/Max based on bipolar flag
 		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
 	}
 
-
-	bipolar_ { |bool, refresh = true|
+	prCalcDataBounds {
 		var flatData;
-
-		bipolar = bool;
 
 		flatData = scalarData.flat;
 		if (bipolar) { flatData = flatData.abs };
+		dataScalarMin = flatData.minItem;
+		dataScalarMax = flatData.maxItem;
+	}
 
-		dataMin = flatData.minItem;
-		dataMax = flatData.maxItem;
-
+	bipolar_ { |bool, refresh = true|
+		bipolar = bool;
+		this.prCalcDataBounds;
 		// re-calc plotData based on min/max
-		this.plotMinMax_(dataMin, dataMax, refresh);
+		switch (plotUnits,
+			\scalar, {
+				this.rhoMinMax_(
+					if (bipolar) { 0 } { rhoMin },
+					rhoMax,
+					refresh
+				)
+			},
+			\db, {
+				this.rhoMinMax_(
+					if (bipolar) { max(clipDbLow, rhoMin) } { rhoMin },
+					rhoMax,
+					refresh
+				)
+			}
+		)
 	}
 
 	// preferred way of setting min and max together
 	// min and max should be set in plotUnits
-	plotMinMax_ { |min, max, refresh = true|
-		this.plotMin_(min, false, false);
-		this.plotMax_(max, true, refresh); // rescale data and refresh
+	rhoMinMax_ { |min, max, refresh = true|
+		this.rhoMin_(min, false, false);
+		this.rhoMax_(max, true, refresh); // rescale data and refresh
 	}
 
 	// min should be set in plotUnits
-	// use plotMinMax_ is setting both min and max
-	plotMin_ { |min, rescaleNow=true, refresh = true|
-		var plotMin;
+	// use rhoMinMax_ is setting both min and max
+	rhoMin_ { |min, rescaleNow = true, refresh = true|
+		var rmin, spec;
 
-		plotMin = if (min == \auto or: { min.isNil }) {
-			if (plotUnits == \db) {
-				max(dataMin.ampdb, clipDbLow)
-			} {
-				dataMin
-			}
+		rmin = if (bipolar) {
+			0
 		} {
-			min
+			if (min == \auto or: { min.isNil }) {
+				rhoMin = nil;
+				if (plotUnits == \db) {
+					max(dataScalarMin.ampdb, clipDbLow)
+				} {
+					dataScalarMin
+				}
+			} {
+				rhoMin = min;
+				min
+			}
 		};
 
-		this.plotSpec_(
-			ControlSpec.newFrom(plotSpec).minval_(plotMin),
-			rescaleNow,
-			refresh
+		spec = if (rhoSpec.notNil) {
+			ControlSpec.newFrom(rhoSpec).minval_(rmin)
+		} {
+			[rmin, rhoMax ?? dataScalarMax].asSpec;
+		};
+
+		this.rhoSpec_(spec, rescaleNow, refresh);
+
+		this.rhoGridLinesAt_(
+			this.rhoGridLines ?? {
+				this.prGetRhoGridLinesFromSpacing(rhoSpec.range / 4, \min, \max)
+			},
+			false
 		);
 
-		this.levelGridLinesAt_(this.levelGridLines, false);
 		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 	// max should be set in the plotUnits
-	// use plotMinMax_ is setting both min and max
-	plotMax_ { |max, rescaleNow=true, refresh = true|
-		var plotMax;
+	// use rhoMinMax_ is setting both min and max
+	rhoMax_ { |max, rescaleNow = true, refresh = true|
+		var rmax, spec;
 
-		plotMax = if (max == \auto or: { max.isNil }) {
-			if (plotUnits == \db) { dataMax.ampdb } { dataMax }
+		rmax = if (max == \auto or: { max.isNil }) {
+			rhoMax = nil;
+			if (plotUnits == \db) {
+				dataScalarMax.ampdb
+			} {
+				dataScalarMax
+			}
 		} {
+			rhoMax = max;
 			max
 		};
 
-		this.plotSpec_(
-			ControlSpec.newFrom(plotSpec).maxval_(plotMax),
-			rescaleNow,
-			refresh
+		spec = if (rhoSpec.notNil) {
+			ControlSpec.newFrom(rhoSpec).maxval_(rmax)
+		} {
+			[rhoMin ?? dataScalarMin, rmax].asSpec
+		};
+
+		this.rhoSpec_(spec, rescaleNow, refresh);
+
+		this.rhoGridLinesAt_(
+			this.rhoGridLines ?? {
+				this.prGetRhoGridLinesFromSpacing(rhoSpec.range / 4, \min, \max)
+			},
+			false
 		);
 
-		this.levelGridLinesAt_(this.levelGridLines, false);
 		rescaleNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 
-	plotMin { ^plotSpec.minval }
-	plotMax { ^plotSpec.maxval }
+	// plotMin/Max are what's actually used in the plot
+	// variables rhoMin/Max can be nil or \auto
+	plotMin { ^rhoSpec.minval }
+	plotMax { ^rhoSpec.maxval }
 
 	// \db or \scalar
 	plotUnits_ { |dbOrScalar, min, max|
-		var newMin, newMax;
+		var testMin, newMin, newMax;
 		if (plotUnits != dbOrScalar) {
 			plotUnits = dbOrScalar;
 
-			if (plotUnits == \db) {
-				// switched to \db scaling
-				newMin = min ?? { max(plotSpec.minval.ampdb, clipDbLow) };
-				newMax = max ?? plotSpec.maxval.ampdb;
-			} {
-				// switched to \scalar scaling from \db
-				newMin = min ?? plotSpec.minval.dbamp;
-				newMax = max ?? plotSpec.maxval.dbamp;
+			if (plotUnits == \db) { // switched to \db scaling
+				newMin = min ?? {
+					if (rhoSpec.minval.isNegative) {
+						warn(
+							format("Minimum plot value is negative [%], which can't be converted to dB. \n"
+							"Consider changing rhoMin, or first convert use bipolar mode if appropriate for you data.",
+								rhoSpec.minval
+							)
+							);
+						plotUnits = \scalar;
+						^this
+					};
+					max(rhoSpec.minval.ampdb, clipDbLow)
+				};
+				newMax = max ?? rhoSpec.maxval.ampdb;
+			} { // switched to \scalar scaling from \db
+				newMin = min ?? rhoSpec.minval.dbamp;
+				newMax = max ?? rhoSpec.maxval.dbamp;
 			};
 
 			// updates plotData
-			this.plotSpec_(
-				ControlSpec(newMin, newMax, plotSpec.warp), // spec always linear, even if data is \db
+			this.rhoSpec_(
+				ControlSpec(newMin, newMax, rhoSpec.warp), // spec always linear, even if data is \db
 				true, false // rescale now, don't refresh yet
 			);
 
 			// reset the grid lines to new plotUnits
-			this.levelGridLinesAt_(
-				if (plotUnits == \db) { levelGridLines.ampdb } { levelGridLines.dbamp },
+			this.rhoGridLinesAt_(
+				if (plotUnits == \db) { rhoGridLines.ampdb } { rhoGridLines.dbamp },
 				true  // refresh
 			);
 		};
 	}
 
 
-	plotSpec_ { |spec, rescaleNow, refresh|
-		plotSpec = spec;
+	rhoSpec_ { |spec, rescaleNow, refresh=true|
+		rhoSpec = spec;
 		// TODO: handle switching the plotUnits with the new spec
-		rescaleNow.if{ this.prRescalePlotData(refresh:true) };
+		rescaleNow.if{ this.prRescalePlotData(refresh: refresh) };
 	}
 
 
 	plotWarp_ { |warp|
-		// TODO:
+
 		"updating warp not yet implemented".warn;
-		// plotSpec.warp_(warp.asWarp);
-		// update data
-		// update gridlines
+		// TODO: // rhoSpec.warp_(warp.asWarp);
+		// update data, update gridlines
 	}
 
-	// called from other methods which set new plotMin/Max
+	// called from other methods which set new rhoMin/Max
 	prRescalePlotData { |refresh = true|
 		var data;
 
@@ -347,9 +404,9 @@ PolarView : ValuesView {
 		data = if (bipolar) { scalarData.abs } { scalarData };
 		plotData = if (plotUnits == \db) {
 			// scalarData is scalar, spec is in db, so convert unmap
-			plotSpec.copy.unmap(data.ampdb);
+			rhoSpec.copy.unmap(data.ampdb);
 		} {
-			plotSpec.copy.unmap(data);
+			rhoSpec.copy.unmap(data);
 		};
 
 		refresh.if{ this.refresh };
@@ -368,48 +425,48 @@ PolarView : ValuesView {
 	}
 
 
-	direction_ { |dir=\cw, refresh = true|
-		direction = dir;
-		dirFlag = switch (direction, \cw, {1}, \ccw, {-1});
-		this.zeroPos_(zeroPos, false);  // updates prZeroPos, startAngle
-		this.sweepLength_(sweepLength, false);
+	thetaDirection_ { |direction=\cw, refresh = true|
+		thetaDirection = direction;
+		dirFlag = switch (thetaDirection, \cw, {1}, \ccw, {-1});
+		this.thetaZeroPosition_(thetaZeroPosition, false);  // updates prZeroPos, thetaMin
+		this.thetaRange_(thetaRange, false);
 		refresh.if{ this.refresh };
 	}
 
 	// This serves as the reference for start angle
-	// When setting this value, reference 0 up, direction \cw
-	zeroPos_ { |radiansOrDir=0, refresh = true|
-		zeroPos = if (radiansOrDir.isKindOf(Number)) {
-			radiansOrDir
+	// When setting this value, reference 0 up, thetaDirection \cw
+	thetaZeroPosition_ { |radiansOrPosition = \top, refresh = true|
+		thetaZeroPosition = if (radiansOrPosition.isKindOf(Number)) {
+			radiansOrPosition
 		} {
-			switch(radiansOrDir,
-				\up, {0}, \down, {pi}, \left, {-0.5pi}, \right, {0.5pi}
+			switch(radiansOrPosition,
+				\top, {0}, \bottom, {pi}, \left, {-0.5pi}, \right, {0.5pi}
 			)
 		};
-		prZeroPos = -0.5pi + zeroPos; // (zeroPos * dirFlag);
-		this.startAngle_(startAngle, false);
+		prZeroPos = -0.5pi + thetaZeroPosition; // (thetaZeroPosition * dirFlag);
+		this.thetaMin_(thetaMin, false);
 		refresh.if{ this.refresh };
 	}
 
-	// startAngle is from zeroPos, advancing in direction
-	startAngle_ {|radians=0, refresh = true|
-		startAngle = radians;
-		prStartAngle = prZeroPos + (startAngle*dirFlag);
+	// thetaMin is from thetaZeroPosition, advancing in thetaDirection
+	thetaMin_ {|radians=0, refresh = true|
+		thetaMin = radians;
+		prStartAngle = prZeroPos + (thetaMin*dirFlag);
 
-		if (thetaGridLinesSpacing.notNil) {
-			this.thetaGridLines_(thetaGridLinesSpacing, refresh)
+		if (thetaGridLineSpacing.notNil) {
+			this.thetaGridLines_(thetaGridLineSpacing, refresh)
 		} {
 			this.thetaGridLinesAt_(thetaGridLines, refresh)
 		};
 	}
 
 
-	sweepLength_ { |radians=2pi, refresh = true|
-		sweepLength = radians;
-		prSweepLength = sweepLength * dirFlag;
+	thetaRange_ { |radians=2pi, refresh = true|
+		thetaRange = radians;
+		prThetaRange = thetaRange * dirFlag;
 
-		if (thetaGridLinesSpacing.notNil) {
-			this.thetaGridLines_(thetaGridLinesSpacing, refresh)
+		if (thetaGridLineSpacing.notNil) {
+			this.thetaGridLines_(thetaGridLineSpacing, refresh)
 		} {
 			this.thetaGridLinesAt_(thetaGridLines, refresh)
 		};
@@ -417,7 +474,12 @@ PolarView : ValuesView {
 
 	// in plotUnits, grid lines created from "from",
 	// stepping "spacing", until reaching "until"
-	levelGridLines_ { |spacing, from = \min, to = \max, refresh = true|
+	rhoGridLines_ { |spacing, from = \min, to = \max, refresh = true|
+		var lines = this.prGetRhoGridLinesFromSpacing(spacing, from, to);
+		this.rhoGridLinesAt_(lines, refresh);
+	}
+
+	prGetRhoGridLinesFromSpacing { |spacing, from = \min, to = \max|
 		var f, t, step;
 		f = switch(from,
 			\max, { this.plotMax },
@@ -430,46 +492,48 @@ PolarView : ValuesView {
 			{ to }
 		);
 		step = if (f < t) { spacing } { spacing.neg };
-		this.levelGridLinesAt_((f, f+step .. t), refresh);
+		^(f, f+step .. t)
 	}
 
 	// an array of levels for the grid lines, in plotUnits
-	levelGridLinesAt_ { |levelArray, refresh|
-		levelGridLines = levelArray.select{ |level|
-			level.inRange(this.plotMin, this.plotMax) // clip to plotMin/Max
+	rhoGridLinesAt_ { |levelArray, refresh|
+		rhoGridLines = levelArray.select{ |level|
+			level.inRange(this.plotMin, this.plotMax) // clip to rhoMin/Max
 		};
 
-		levelGridNorm = plotSpec.copy.unmap(levelGridLines); // TODO: why is .copy required? it fails without it, bug?
+		rhoGridLinesNorm = rhoSpec.copy.unmap(rhoGridLines); // TODO: why is .copy required? it fails without it, bug?
 
 		refresh.if{ this.refresh };
 	}
 
 	// NOTE: spacing in radians (currently)
 	thetaGridLines_ { |spacing, refresh = true|
-		thetaGridLines = (startAngle, startAngle + spacing .. startAngle + sweepLength);
+		thetaGridLines = (thetaMin, thetaMin + spacing .. thetaMin + thetaRange);
 		// avoid duplicate lines at 2pi apart
 		if ((thetaGridLines.first % 2pi) == (thetaGridLines.last % 2pi), {
 			thetaGridLines = thetaGridLines.keep(thetaGridLines.size-1)
 		});
 
-		thetaGridLinesSpacing = spacing;
+		thetaGridLineSpacing = spacing;
 		this.prThetaGridLinesAt_(thetaGridLines, refresh);
 	}
 
 	// an array of thetaPositions
 	thetaGridLinesAt_ { |thetaArray, refresh = true|
-		thetaGridLinesSpacing = nil;
+		thetaGridLineSpacing = nil;
 		this.prThetaGridLinesAt_(thetaArray, refresh);
 	}
+
 
 	prThetaGridLinesAt_ { |thetaArray, refresh = true|
 		thetaGridLines = thetaArray.select{ |theta|
 			// clip to range of plot
-			theta.inRange(startAngle, startAngle+sweepLength)
+			theta.inRange(thetaMin, thetaMin + thetaRange)
 		};
 		prThetaGridLines = prZeroPos + (thetaGridLines * dirFlag);
 		refresh.if{ this.refresh };
 	}
+
 
 	background_ { |color| userView.background_(color) }
 	background { ^userView.background }
@@ -480,7 +544,7 @@ PolarView : ValuesView {
 		var st, sweep;
 
 		st = prStartAngle;
-		sweep = prSweepLength;
+		sweep = prThetaRange;
 
 		if (sweep.isNegative) {
 			end = st + sweep;
@@ -504,7 +568,7 @@ PolarView : ValuesView {
 		var pnts = [];
 
 		st = prStartAngle;
-		end = (prStartAngle + prSweepLength).wrap(2pi.neg, 2pi);
+		end = (prStartAngle + prThetaRange).wrap(2pi.neg, 2pi);
 		minAng = min(st, end);
 		maxAng = max(st, end);
 		// right
@@ -758,7 +822,7 @@ PolarBackgroundLayer  : ValueViewLayer {
 	fill {
 		Pen.push;
 		Pen.fillColor_(p.fillColor);
-		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
+		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prThetaRange);
 		Pen.fill;
 		Pen.pop;
 	}
@@ -781,7 +845,7 @@ PolarGridLayer : ValueViewLayer {
 			lonTxtRound:  1,
 			lonTxtWrap:   [0, 2pi], // wrap the grid's longitude text labels around these, in radians
 			lonTxtUnits:  \degrees, // or \radians, or \pi
-			latTxtAng:    0,        // radian angle of latitude labels, relative to zeroPos
+			latTxtAng:    0,        // radian angle of latitude labels, relative to thetaZeroPosition
 			lonTxtOffset: 0.065,    // percentage of the radius
 			strokeWidth:  1,
 		)
@@ -795,7 +859,7 @@ PolarGridLayer : ValueViewLayer {
 		// background fill of grid
 		if (p.fill) {
 			Pen.fillColor_(p.fillColor);
-			Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prSweepLength);
+			Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prThetaRange);
 			Pen.fill;
 		};
 
@@ -804,8 +868,8 @@ PolarGridLayer : ValueViewLayer {
 		Pen.width_(p.strokeWidth);
 
 		if (p.showLatLines) {
-			view.levelGridNorm.do{ |level|
-				Pen.addArc(view.prPlotCen, level * rad, view.prStartAngle, view.prSweepLength);
+			view.rhoGridLinesNorm.do{ |level|
+				Pen.addArc(view.prPlotCen, level * rad, view.prStartAngle, view.prThetaRange);
 			};
 			Pen.stroke;
 		};
@@ -832,9 +896,9 @@ PolarGridLayer : ValueViewLayer {
 			theta = view.prZeroPos + (p.latTxtAng * view.dirFlag);
 			thetaMod = theta % 2pi;
 
-			view.levelGridNorm.do{ |level, i|
+			view.rhoGridLinesNorm.do{ |level, i|
 				corner = Polar(level * rad, theta).asPoint;
-				str = view.levelGridLines[i].round(p.latTxtRound).asString;
+				str = view.rhoGridLines[i].round(p.latTxtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -909,7 +973,7 @@ PolarLegendLayer : ValueViewLayer {
 			lineSpacing: 6,            // spacing between sample line and text
 			font:        Font("Helvetica"),
 			fontSize:    14,
-			labels:      ["Plot 1"],
+			labels:      [],
 			showBorder:  true,
 			borderColor: Color.gray,
 			borderWidth: 1,
@@ -1059,8 +1123,12 @@ PolarLegendLayer : ValueViewLayer {
 			if (p.labels.isKindOf(String)) {
 				p.labels = [p.labels]
 			};
-			// make sure there are labels for all plots
-			labels = p.labels.asArray.extend(nElem, " - ");
+
+			labels = if (p.labels.size == 0) {
+				view.plotData.size.collect{|i| format("Plot %", i+1) }
+			} { // make sure there are labels for all plots
+				p.labels.asArray.extend(nElem, " - ");
+			};
 
 			font = p.font.size_(p.fontSize);
 			txtRects = labels.collect(_.bounds(font));
@@ -1184,8 +1252,8 @@ PolarTitleLayer : ValueViewLayer {
 (
 v = PolarView(bounds: Size(500, 500).asRect, specs: [[0,2pi].asSpec],
 	initVals: 30.collect{rrand(-2pi,2pi)},
-	direction: \ccw,
-	zeroPos: \right,
+	thetaDirection: \ccw,
+	thetaZeroPosition: \right,
 	plotUnits: \scalar
 ).front;
 v.title.txt_("Two plots: sine and cosine");
@@ -1198,7 +1266,7 @@ v.legend.labels_(["sine", "cosine"]);
 v.plots.fill = true
 v.plots.fillAlpha = 0.3
 
-v.levelGridLines_(1, 0.25, -1) // note -1 is the minimum, in the center
+v.rhoGridLines_(1, 0.25, -1) // note -1 is the minimum, in the center
 v.plots.strokeType = \points
 v.plots.pointRad = 1
 v.plots.strokeType = [\line,\points] // different stroke styles
@@ -1210,8 +1278,8 @@ v.legend.layout = \horizontal
 
 // switch to a dB scaling
 v.plotUnits = \db
-v.plotMin_(-40)
-v.levelGridLines_(0, 5, -40)
+v.rhoMin_(-40)
+v.rhoGridLines_(0, 5, -40)
 
 
 */
