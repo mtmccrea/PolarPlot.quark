@@ -42,7 +42,7 @@ PolarView : ValuesView {
 	var thetaGridLineSpacing;
 
 	*new {
-		|parent, bounds, data = ([0]), thetaArray = ([0, 2pi]), thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \cw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
+		|parent, bounds, data = ([0]), thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \cw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
 		^super.new(parent, bounds, [thetaBounds.asSpec], data).init(
 			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition, plotRadius, dataUnits, plotUnits, bipolar
 		);
@@ -107,7 +107,7 @@ PolarView : ValuesView {
 		// dataScalarMax = rhoSpec.maxval;
 
 
-		this.data_(values, argThetaArray, argDataUnits, bipolar, refresh: false);
+		this.data_(values, argThetaArray ?? { [thetaMin, thetaMax] }, argDataUnits, bipolar, refresh: false);
 
 		// rhoGridLines = (rhoSpec.minval, rhoSpec.minval + ((rhoSpec.maxval-rhoSpec.minval)/5) .. rhoSpec.maxval);
 		// rhoGridLinesNorm = rhoGridLines.collect(rhoSpec.unmap(_));
@@ -200,8 +200,12 @@ PolarView : ValuesView {
 
 		scalarData = if (units == \db) { dataArray.dbamp } { dataArray };
 
-		if (thetaArray.shape.size == 1) {
-			thetaArray = [thetaArray];
+		if (thetaArray.isNil) {
+			thetaArray = [thetaMin, thetaMax]
+		} {
+			if (thetaArray.shape.size == 1) {
+				thetaArray = [thetaArray];
+			}
 		};
 
 		thetas = Array.newClear(dataArray.size);
@@ -225,10 +229,20 @@ PolarView : ValuesView {
 	prCalcDataBounds {
 		var flatData;
 
-		flatData = scalarData.flat;
-		if (bipolar) { flatData = flatData.abs };
-		dataScalarMin = flatData.minItem;
-		dataScalarMax = flatData.maxItem;
+		if (scalarData[0].size <= 1) { // if data hasn't been set (default at init)
+			if (plotUnits == \db) {
+				dataScalarMin = clipDbLow.dbamp;
+				dataScalarMax = 1;
+			} {
+				dataScalarMin = 0;
+				dataScalarMax = 1;
+			}
+		} {
+			flatData = scalarData.flat;
+			if (bipolar) { flatData = flatData.abs };
+			dataScalarMin = flatData.minItem;
+			dataScalarMax = flatData.maxItem;
+		}
 	}
 
 	bipolar_ { |bool, refresh = true|
@@ -262,7 +276,7 @@ PolarView : ValuesView {
 
 	// min should be set in plotUnits
 	// use rhoMinMax_ is setting both min and max
-	rhoMin_ { |min, rescaleNow = true, refresh = true|
+	rhoMin_ { |min, recalcNow = true, refresh = true|
 		var rmin, spec;
 
 		rmin = if (bipolar) {
@@ -287,7 +301,7 @@ PolarView : ValuesView {
 			[rmin, rhoMax ?? dataScalarMax].asSpec;
 		};
 
-		this.rhoSpec_(spec, rescaleNow, refresh);
+		this.rhoSpec_(spec, recalcNow, refresh);
 
 		this.rhoGridLinesAt_(
 			this.rhoGridLines ?? {
@@ -296,12 +310,12 @@ PolarView : ValuesView {
 			false
 		);
 
-		rescaleNow.if{ this.prRescalePlotData(refresh) };
+		recalcNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 	// max should be set in the plotUnits
 	// use rhoMinMax_ is setting both min and max
-	rhoMax_ { |max, rescaleNow = true, refresh = true|
+	rhoMax_ { |max, recalcNow = true, refresh = true|
 		var rmax, spec;
 
 		rmax = if (max == \auto or: { max.isNil }) {
@@ -322,7 +336,7 @@ PolarView : ValuesView {
 			[rhoMin ?? dataScalarMin, rmax].asSpec
 		};
 
-		this.rhoSpec_(spec, rescaleNow, refresh);
+		this.rhoSpec_(spec, recalcNow, refresh);
 
 		this.rhoGridLinesAt_(
 			this.rhoGridLines ?? {
@@ -331,7 +345,7 @@ PolarView : ValuesView {
 			false
 		);
 
-		rescaleNow.if{ this.prRescalePlotData(refresh) };
+		recalcNow.if{ this.prRescalePlotData(refresh) };
 	}
 
 
@@ -381,15 +395,22 @@ PolarView : ValuesView {
 	}
 
 
-	rhoSpec_ { |spec, rescaleNow, refresh=true|
+	rhoSpec_ { |spec, recalcNow = true, refresh = true|
 		rhoSpec = spec;
-		// TODO: handle switching the plotUnits with the new spec
-		rescaleNow.if{ this.prRescalePlotData(refresh: refresh) };
+		if (rhoSpec.minval > rhoSpec.maxval) {
+			var min, max;
+			min = rhoSpec.maxval;
+			max = rhoSpec.minval;
+			rhoSpec = rhoSpec.copy.minval_(min).maxval_(max);
+		};
+		this.rhoGridLines !? {
+			this.rhoGridLinesAt_(this.rhoGridLines, false)
+		};
+		recalcNow.if{ this.prRescalePlotData(refresh: refresh) };
 	}
 
 
 	plotWarp_ { |warp|
-
 		"updating warp not yet implemented".warn;
 		// TODO: // rhoSpec.warp_(warp.asWarp);
 		// update data, update gridlines
@@ -461,7 +482,7 @@ PolarView : ValuesView {
 	}
 
 
-	thetaRange_ { |radians=2pi, refresh = true|
+	thetaRange_ { |radians = (2pi), refresh = true|
 		thetaRange = radians;
 		prThetaRange = thetaRange * dirFlag;
 
@@ -474,12 +495,13 @@ PolarView : ValuesView {
 
 	// in plotUnits, grid lines created from "from",
 	// stepping "spacing", until reaching "until"
-	rhoGridLines_ { |spacing, from = \min, to = \max, refresh = true|
+	rhoGridLines_ { |spacing, from = \max, to = \min, refresh = true|
 		var lines = this.prGetRhoGridLinesFromSpacing(spacing, from, to);
 		this.rhoGridLinesAt_(lines, refresh);
 	}
 
-	prGetRhoGridLinesFromSpacing { |spacing, from = \min, to = \max|
+
+	prGetRhoGridLinesFromSpacing { |spacing, from = \max, to = \min|
 		var f, t, step;
 		f = switch(from,
 			\max, { this.plotMax },
@@ -496,8 +518,8 @@ PolarView : ValuesView {
 	}
 
 	// an array of levels for the grid lines, in plotUnits
-	rhoGridLinesAt_ { |levelArray, refresh|
-		rhoGridLines = levelArray.select{ |level|
+	rhoGridLinesAt_ { |rhoArray, refresh|
+		rhoGridLines = rhoArray.select{ |level|
 			level.inRange(this.plotMin, this.plotMax) // clip to rhoMin/Max
 		};
 
