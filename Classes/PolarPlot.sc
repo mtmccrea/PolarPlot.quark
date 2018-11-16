@@ -832,23 +832,6 @@ PolarPlotLayer : ValueViewLayer {
 
 }
 
-PolarBackgroundLayer  : ValueViewLayer {
-
-	*properties {
-		^(
-			show:      true,
-			fillColor: Color.white,
-		)
-	}
-
-	fill {
-		Pen.push;
-		Pen.fillColor_(p.fillColor);
-		Pen.addAnnularWedge(view.prPlotCen, 0.001, view.prPlotRad, view.prStartAngle, view.prThetaRange);
-		Pen.fill;
-		Pen.pop;
-	}
-}
 
 PolarGridLayer : ValueViewLayer {
 	*properties {
@@ -856,19 +839,19 @@ PolarGridLayer : ValueViewLayer {
 			show:         true,
 			fill:         true,
 			fillColor:    Color.white,
-			showLonLines: true,
-			showLatLines: true,
+			showThetaLines: true,
+			showRhoLines: true,
 			strokeColor:  Color.gray.alpha_(0.4), // grid color
-			showLonVals:  true,
-			showLatVals:  true,
-			latTxtColor:  Color.gray.alpha_(0.3),
-			lonTxtColor:  Color.gray,
-			latTxtRound:  0.01,
-			lonTxtRound:  1,
-			lonTxtWrap:   [0, 2pi], // wrap the grid's longitude text labels around these, in radians
-			lonTxtUnits:  \degrees, // or \radians, or \pi
-			latTxtAng:    0,        // radian angle of latitude labels, relative to thetaZeroPosition
-			lonTxtOffset: 0.065,    // percentage of the radius
+			showThetaVals: true,
+			showRhoVals:  true,
+			rhoTxtColor:  Color.gray.alpha_(0.4),
+			thetaTxtColor:  Color.gray,
+			rhoTxtRound:  0.01,
+			thetaTxtRound:  1,
+			thetaTxtWrap:   [0, 2pi], // wrap the grid's theta (longitude) text labels around these, in radians
+			thetaTxtUnits:  \degrees, // or \radians, or \pi
+			rhoTxtAng:    0,        // radian angle of rho (latitude) labels, relative to thetaZeroPosition
+			thetaTxtOffset: 0.065,    // percentage of the radius
 			strokeWidth:  1,
 		)
 	}
@@ -885,18 +868,19 @@ PolarGridLayer : ValueViewLayer {
 			Pen.fill;
 		};
 
-		/* lattitude lines */
+		/* rho (lattitude) lines */
 		Pen.strokeColor_(p.strokeColor);
 		Pen.width_(p.strokeWidth);
 
-		if (p.showLatLines) {
+		if (p.showRhoLines) {
 			view.rhoGridLinesNorm.do{ |level|
 				Pen.addArc(view.prPlotCen, level * rad, view.prStartAngle, view.prThetaRange);
 			};
 			Pen.stroke;
 		};
 
-		if (p.showLonLines) {
+		/* theta (longitude) lines */
+		if (p.showThetaLines) {
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
@@ -908,19 +892,19 @@ PolarGridLayer : ValueViewLayer {
 			Pen.pop;
 		};
 
-		/* lattitude labels */
-		if (p.showLatVals) {
+		/* rho labels */
+		if (p.showRhoVals) {
 			var str, theta, strBnds, corner, thetaMod;
 
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
-			theta = view.prZeroPos + (p.latTxtAng * view.dirFlag);
+			theta = view.prZeroPos + (p.rhoTxtAng * view.dirFlag);
 			thetaMod = theta % 2pi;
 
 			view.rhoGridLinesNorm.do{ |level, i|
 				corner = Polar(level * rad, theta).asPoint;
-				str = view.rhoGridLines[i].round(p.latTxtRound).asString;
+				str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
 				if (thetaMod.inRange(0,pi),
@@ -933,27 +917,27 @@ PolarGridLayer : ValueViewLayer {
 					{ strBnds.left_(corner.x) }
 				);
 
-				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.latTxtColor);
+				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
 			};
 			Pen.pop;
 		};
 		Pen.pop;
 
 		/* longitude labels */
-		if (p.showLonVals) {
+		if (p.showThetaVals) {
 			var str, strVal, theta, strBnds, txtCen, thetaMod, wrapBnds, rnd;
 
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
-			wrapBnds = p.lonTxtWrap * 1.001; // prevent edge line labels from wrapping, e.g. 45.degrad.wrap(*[-45, 45].degrad)
-			rnd = p.lonTxtRound;
+			wrapBnds = p.thetaTxtWrap * 1.001; // prevent edge line labels from wrapping, e.g. 45.degrad.wrap(*[-45, 45].degrad)
+			rnd = p.thetaTxtRound;
 
 			view.prThetaGridLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
 
-				txtCen = Polar(rad*(1+p.lonTxtOffset), theta).asPoint;
-				str = switch(p.lonTxtUnits,
+				txtCen = Polar(rad*(1+p.thetaTxtOffset), theta).asPoint;
+				str = switch(p.thetaTxtUnits,
 					\degrees, {
 						strVal = view.thetaGridLines[i].wrap(*wrapBnds).raddeg.round(rnd);
 						if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
@@ -969,7 +953,7 @@ PolarGridLayer : ValueViewLayer {
 				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 				strBnds = strBnds.center_(txtCen);
 
-				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.lonTxtColor);
+				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.thetaTxtColor);
 			};
 			Pen.pop;
 		};
