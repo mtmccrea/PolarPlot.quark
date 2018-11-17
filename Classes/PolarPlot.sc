@@ -40,6 +40,7 @@ PolarView : ValuesView {
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
 	var thetaGridLineSpacing;
+	var dataIsNegative;    // bool, if data contains negative values, plotUnits in dB requires bipolar == true
 
 	*new {
 		|parent, bounds, data = ([0]), thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \cw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
@@ -91,33 +92,9 @@ PolarView : ValuesView {
 			rhoMin = max(rhoMin, clipDbLow)
 		};
 
-
 		bipolar = argBipolar;
-		// this.prCalcDataBounds;
-		// this.rhoMinMax_(rhoMin, rhoMax, refresh: false); // sets rhoSpec, nil for min or max will detect from data
-		//
-		// rhoSpec = switch (plotUnits,
-		// 	\db,     { [-70, 0, \lin] },
-		// 	\scalar, { [0,1] }
-		// ).asSpec;
-
-
-		// TODO: should this be actual data min / max nor the spec?
-		// dataScalarMin = rhoSpec.minval;
-		// dataScalarMax = rhoSpec.maxval;
-
 
 		this.data_(values, argThetaArray ?? { [thetaMin, thetaMax] }, argDataUnits, bipolar, refresh: false);
-
-		// rhoGridLines = (rhoSpec.minval, rhoSpec.minval + ((rhoSpec.maxval-rhoSpec.minval)/5) .. rhoSpec.maxval);
-		// rhoGridLinesNorm = rhoGridLines.collect(rhoSpec.unmap(_));
-
-		// TODO:
-		// // ensure data encoded with correct units
-		// rhoSpec = specs;
-		// this.data_(values,
-		// 	[].collect({|spc| [spc.minval, spc.maxval]}),
-		// argDataUnits, argBipolar, refresh: false);
 
 		thetaGridLineSpacing = pi/6;
 		this.thetaDirection_(thetaDirection); // sets thetaZeroPosition, thetaMin, thetaRange
@@ -144,7 +121,6 @@ PolarView : ValuesView {
 				titleOffset = 0;
 				vh = bnds.height
 			};
-			vw = bnds.width;
 
 			// TODO: the following calculation of the center of the plot is close
 			// but not quite right for plots with sweep length of less than 2 pi
@@ -156,6 +132,7 @@ PolarView : ValuesView {
 			plotOrigin = plotBnds.origin;
 			pw = plotBnds.width;
 			ph = plotBnds.height;
+			vw = bnds.width;
 			viewHRatio = vh/vw;
 			plotRatio = ph/pw;
 			minDim = min(vw, vh);
@@ -199,6 +176,7 @@ PolarView : ValuesView {
 		};
 
 		scalarData = if (units == \db) { dataArray.dbamp } { dataArray };
+		dataIsNegative = scalarData.flat.minItem < 0;
 
 		if (thetaArray.isNil) {
 			thetaArray = [thetaMin, thetaMax]
@@ -226,6 +204,7 @@ PolarView : ValuesView {
 		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
 	}
 
+
 	prCalcDataBounds {
 		var flatData;
 
@@ -245,26 +224,33 @@ PolarView : ValuesView {
 		}
 	}
 
+
 	bipolar_ { |bool, refresh = true|
 		bipolar = bool;
+
+		if (dataIsNegative and: { plotUnits == \db and: { bipolar.not } }) {
+			bipolar = true;
+			warn(
+				"Negative data values require either (plotUnits == \scalar),"
+				" or (plotUnits == \scalar and: bipolar == true)."
+				"'bipolar' set to true."
+			);
+		};
+
+		// re-calc plot bounds based on min/max
 		this.prCalcDataBounds;
-		// re-calc plotData based on min/max
-		switch (plotUnits,
-			\scalar, {
-				this.rhoMinMax_(
-					if (bipolar) { 0 } { rhoMin },
-					rhoMax,
-					refresh
-				)
-			},
-			\db, {
-				this.rhoMinMax_(
-					if (bipolar) { max(clipDbLow, rhoMin) } { rhoMin },
-					rhoMax,
-					refresh
-				)
-			}
-		)
+
+		this.rhoMinMax_(
+			switch (plotUnits,
+				\scalar, { if (bipolar) { 0 } { rhoMin } },
+				\db, {
+					if (bipolar) { rhoMin !? { max(clipDbLow, rhoMin) } } { rhoMin }
+					// rhoMin, // rhoMinMax_ will check min against clipDbLow
+				}
+			),
+			rhoMax,
+			refresh
+		);
 	}
 
 	// preferred way of setting min and max together
@@ -279,20 +265,46 @@ PolarView : ValuesView {
 	rhoMin_ { |min, recalcNow = true, refresh = true|
 		var rmin, spec;
 
-		rmin = if (bipolar) {
-			0
-		} {
-			if (min == \auto or: { min.isNil }) {
-				rhoMin = nil;
-				if (plotUnits == \db) {
-					max(dataScalarMin.ampdb, clipDbLow)
+		if (min == \auto or: { min.isNil }) {
+			// detect min from data
+			if (plotUnits == \scalar) {
+				if (bipolar) {
+					rmin = max(0, dataScalarMin);
 				} {
-					dataScalarMin
-				}
-			} {
-				rhoMin = min;
-				min
-			}
+					rmin = dataScalarMin
+				};
+			} { // plotUnits are \db
+				if (bipolar) {
+					rmin = if (dataIsNegative) {
+						scalarData.flat.abs.minItem.ampdb
+					} {
+						dataScalarMin.ampdb
+					};
+					rmin = max(rmin, clipDbLow);
+				} {
+					if (dataIsNegative) {
+						warn("Data is negative so cannot be represented in \\db unless bipolar == true.");
+						^this
+					} {
+						rmin = rmin = max(dataScalarMin.ampdb, clipDbLow);
+					}
+				};
+			};
+			rhoMin = nil;
+		} {
+			// min is passed in
+			if (plotUnits == \scalar) {
+				if (bipolar) {
+					rmin = max(0, min); // no negative plotMin
+				} {
+					rmin = min;
+				};
+			} { // plotUnits are \db
+				rmin = min;
+			};
+			// rhoMin remains at level passed in, even if
+			// rmin clipped to 0 in bipolar mode
+			rhoMin = min;
 		};
 
 		spec = if (rhoSpec.notNil) {
@@ -357,7 +369,15 @@ PolarView : ValuesView {
 	// \db or \scalar
 	plotUnits_ { |dbOrScalar, min, max|
 		var testMin, newMin, newMax;
+
 		if (plotUnits != dbOrScalar) {
+
+			if (dataIsNegative and: { dbOrScalar == \db and: { bipolar.not } }) {
+				warn("Negative data values require either (plotUnits == \scalar),"
+					" or (plotUnits == \scalar and: bipolar == true).");
+				^this
+			};
+
 			plotUnits = dbOrScalar;
 
 			if (plotUnits == \db) { // switched to \db scaling
@@ -375,7 +395,8 @@ PolarView : ValuesView {
 					max(rhoSpec.minval.ampdb, clipDbLow)
 				};
 				newMax = max ?? rhoSpec.maxval.ampdb;
-			} { // switched to \scalar scaling from \db
+			} {
+				// switched to \scalar scaling from \db
 				newMin = min ?? rhoSpec.minval.dbamp;
 				newMax = max ?? rhoSpec.maxval.dbamp;
 			};
@@ -383,28 +404,34 @@ PolarView : ValuesView {
 			// updates plotData
 			this.rhoSpec_(
 				ControlSpec(newMin, newMax, rhoSpec.warp), // spec always linear, even if data is \db
-				true, false // rescale now, don't refresh yet
+				true, true // rescale and refresh
 			);
 
-			// reset the grid lines to new plotUnits
-			this.rhoGridLinesAt_(
-				if (plotUnits == \db) { rhoGridLines.ampdb } { rhoGridLines.dbamp },
-				true  // refresh
-			);
 		};
 	}
 
 
 	rhoSpec_ { |spec, recalcNow = true, refresh = true|
-		rhoSpec = spec;
+		var gridlinesNorm;
+
+		this.rhoGridLines !? {
+			// store unmapped value of gridlines
+			gridlinesNorm = rhoSpec.unmap(rhoGridLines);
+		};
+
+		rhoSpec = spec.copy; // weird behavior if you don't copy the spec
 		if (rhoSpec.minval > rhoSpec.maxval) {
 			var min, max;
 			min = rhoSpec.maxval;
 			max = rhoSpec.minval;
 			rhoSpec = rhoSpec.copy.minval_(min).maxval_(max);
 		};
-		this.rhoGridLines !? {
-			this.rhoGridLinesAt_(this.rhoGridLines, false)
+
+		gridlinesNorm !? {
+			this.rhoGridLinesAt_(
+				rhoSpec.map(gridlinesNorm),
+				false
+			)
 		};
 		recalcNow.if{ this.prRescalePlotData(refresh: refresh) };
 	}
@@ -577,7 +604,6 @@ PolarView : ValuesView {
 			newend = newstart + sweep;
 		};
 		ang = ang.wrap(0, 2pi);
-		// [newstart, newend, ang].round(1e-4).postln;
 
 		^(ang.inRange(newstart, newend) or: {(ang + 2pi).inRange(newstart, newend)});
 	}
@@ -1195,7 +1221,6 @@ PolarTitleLayer : ValueViewLayer {
 			show:        true,
 			fillColor:   Color.white,
 			txtColor:    Color.gray,
-			align:       \top,
 			inset:       10,    // pixel distance inset from the top of the view
 			margin:      15,    // margin around text and title border
 			txt:         "plot",
@@ -1252,40 +1277,3 @@ PolarTitleLayer : ValueViewLayer {
 	}
 
 }
-
-/*
-
-(
-v = PolarView(bounds: Size(500, 500).asRect, specs: [[0,2pi].asSpec],
-	initVals: 30.collect{rrand(-2pi,2pi)},
-	thetaDirection: \ccw,
-	thetaZeroPosition: \right,
-	plotUnits: \scalar
-).front;
-v.title.txt_("Two plots: sine and cosine");
-v.data_([sinPi((0,0.005 .. 1)), cosPi((0,0.005 .. 1))], [0, 2pi], \scalar); // sine window
-v.plots.plotColors = 2.collect{Color.rand};
-v.legend.labels_(["sine", "cosine"]);
-)
-
-// 2 plots of data
-v.plots.fill = true
-v.plots.fillAlpha = 0.3
-
-v.rhoGridLines_(1, 0.25, -1) // note -1 is the minimum, in the center
-v.plots.strokeType = \points
-v.plots.pointRad = 1
-v.plots.strokeType = [\line,\points] // different stroke styles
-
-v.plots.strokeType = [\points, FloatArray.with(*[6, 3, 2, 3])]
-v.legend.lineLength = 25 // make lineLength long enough to see the dashed pattern
-v.legend.align
-v.legend.layout = \horizontal
-
-// switch to a dB scaling
-v.plotUnits = \db
-v.rhoMin_(-40)
-v.rhoGridLines_(0, 5, -40)
-
-
-*/
