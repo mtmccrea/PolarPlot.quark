@@ -39,7 +39,7 @@ PolarView : ValuesView {
 
 	var <>clipDbLow = -90; // min dB level when setting plot minimum (0.ampdb = -inf, which breaks ControlSpec);
 	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
-	var thetaGridLineSpacing;
+	var thetaGridLineSpacing, rhoGridLinesSpacing;
 	var dataIsNegative;    // bool, if data contains negative values, plotUnits in dB requires bipolar == true
 
 	*new {
@@ -315,7 +315,7 @@ PolarView : ValuesView {
 
 		this.rhoSpec_(spec, recalcNow, refresh);
 
-		this.rhoGridLinesAt_(
+		this.prRhoGridLinesAt_(
 			this.rhoGridLines ?? {
 				this.prGetRhoGridLinesFromSpacing(rhoSpec.range / 4, \min, \max)
 			},
@@ -350,7 +350,7 @@ PolarView : ValuesView {
 
 		this.rhoSpec_(spec, recalcNow, refresh);
 
-		this.rhoGridLinesAt_(
+		this.prRhoGridLinesAt_(
 			this.rhoGridLines ?? {
 				this.prGetRhoGridLinesFromSpacing(rhoSpec.range / 4, \min, \max)
 			},
@@ -428,7 +428,7 @@ PolarView : ValuesView {
 		};
 
 		gridlinesNorm !? {
-			this.rhoGridLinesAt_(
+			this.prRhoGridLinesAt_(
 				rhoSpec.map(gridlinesNorm),
 				false
 			)
@@ -437,10 +437,20 @@ PolarView : ValuesView {
 	}
 
 
-	plotWarp_ { |warp|
-		"updating warp not yet implemented".warn;
-		// TODO: // rhoSpec.warp_(warp.asWarp);
-		// update data, update gridlines
+	rhoWarp_ { |warpOrNum|
+		this.rhoSpec = this.rhoSpec.copy.warp_(
+			if (warpOrNum.isKindOf(Number)) {
+				warpOrNum.asWarp
+			} {
+				warpOrNum // assume it's a Warp or one of it's subclasses.
+			}
+		);
+
+		if (rhoGridLinesSpacing.notNil) {
+			this.rhoGridLines_(rhoGridLinesSpacing, \max, \min, true);
+		} {
+			this.rhoGridLinesAt_(rhoGridLines, true);
+		};
 	}
 
 	// called from other methods which set new rhoMin/Max
@@ -524,7 +534,8 @@ PolarView : ValuesView {
 	// stepping "spacing", until reaching "until"
 	rhoGridLines_ { |spacing, from = \max, to = \min, refresh = true|
 		var lines = this.prGetRhoGridLinesFromSpacing(spacing, from, to);
-		this.rhoGridLinesAt_(lines, refresh);
+		rhoGridLinesSpacing = spacing;
+		this.prRhoGridLinesAt_(lines, refresh);
 	}
 
 
@@ -544,8 +555,7 @@ PolarView : ValuesView {
 		^(f, f+step .. t)
 	}
 
-	// an array of levels for the grid lines, in plotUnits
-	rhoGridLinesAt_ { |rhoArray, refresh|
+	prRhoGridLinesAt_ { |rhoArray, refresh = true|
 		rhoGridLines = rhoArray.select{ |level|
 			level.inRange(this.plotMin, this.plotMax) // clip to rhoMin/Max
 		};
@@ -553,6 +563,11 @@ PolarView : ValuesView {
 		rhoGridLinesNorm = rhoSpec.copy.unmap(rhoGridLines); // TODO: why is .copy required? it fails without it, bug?
 
 		refresh.if{ this.refresh };
+	}
+	// an array of levels for the grid lines, in plotUnits
+	rhoGridLinesAt_ { |rhoArray, refresh = true|
+		rhoGridLinesSpacing = nil;
+		this.prRhoGridLinesAt_(rhoArray, refresh);
 	}
 
 	// NOTE: spacing in radians (currently)
