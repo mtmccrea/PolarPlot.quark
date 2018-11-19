@@ -43,7 +43,7 @@ PolarView : ValuesView {
 	var dataIsNegative;    // bool, if data contains negative values, plotUnits in dB requires bipolar == true
 
 	*new {
-		|parent, bounds, data = ([0]), thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \cw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
+		|parent, bounds, data = ([0]), thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \ccw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
 		^super.new(parent, bounds, [thetaBounds.asSpec], data).init(
 			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition, plotRadius, dataUnits, plotUnits, bipolar
 		);
@@ -197,6 +197,8 @@ PolarView : ValuesView {
 				dataStep = (dArr.size - 1).reciprocal;
 				thetaEnv = Env(thArr, (thArr.size-1).reciprocal, \lin);
 				thetas[i] = dArr.collect{ |val, j| thetaEnv.at(dataStep*j) };
+			} {
+				thetas[i] = thetaArray.wrapAt(i);
 			};
 		};
 
