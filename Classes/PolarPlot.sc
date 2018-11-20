@@ -41,9 +41,10 @@ PolarView : ValuesView {
 	var <bipolar = false;  // display the data as the absolute values (of the scalar values), with negative values a different color
 	var thetaGridLineSpacing, rhoGridLinesSpacing;
 	var dataIsNegative;    // bool, if data contains negative values, plotUnits in dB requires bipolar == true
+	var defaultData = false;
 
 	*new {
-		|parent, bounds, data = ([0]), thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \ccw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
+		|parent, bounds, data, thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \ccw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
 		^super.new(parent, bounds, [thetaBounds.asSpec], data).init(
 			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition, plotRadius, dataUnits, plotUnits, bipolar
 		);
@@ -51,7 +52,7 @@ PolarView : ValuesView {
 
 
 	init { |argThetaArray, argThetaBounds, argRhoBounds, argThetaDirection, argThetaZeroPosition, argPlotRadius, argDataUnits, argPlotUnits, argBipolar|
-
+		var nodata = false;
 		// REQUIRED: in subclass init, initialize drawing layers
 		layers = [
 			PolarPlotLayer, PolarGridLayer,
@@ -80,7 +81,10 @@ PolarView : ValuesView {
 		thetaMax = argThetaBounds.maxItem;
 		thetaRange = thetaMax - thetaMin;
 
-		argRhoBounds !? {
+		if (argRhoBounds.isNil) {
+			rhoMin = nil;
+			rhoMax = nil;
+		} {
 			if (argRhoBounds.includes(nil)) {
 				#rhoMin, rhoMax = argRhoBounds;
 			} {
@@ -94,6 +98,10 @@ PolarView : ValuesView {
 
 		bipolar = argBipolar;
 
+		this.values ?? {
+			values = [0];
+			defaultData = true; // catch for initializing min/max spec
+		};
 		this.data_(values, argThetaArray ?? { [thetaMin, thetaMax] }, argDataUnits, bipolar, refresh: false);
 
 		thetaGridLineSpacing = pi/6;
@@ -204,13 +212,14 @@ PolarView : ValuesView {
 
 		// set dataScalarMin/Max based on bipolar flag
 		this.bipolar_(bipolar ?? { this.bipolar }, refresh);
+		defaultData = false;
 	}
 
 
 	prCalcDataBounds {
 		var flatData;
-
-		if (scalarData[0].size <= 1) { // if data hasn't been set (default at init)
+		// if (scalarData[0].size <= 1) { // if data hasn't been set (default at init)
+		if (defaultData) { // if initialized with no data
 			if (plotUnits == \db) {
 				dataScalarMin = clipDbLow.dbamp;
 				dataScalarMax = 1;
@@ -246,8 +255,11 @@ PolarView : ValuesView {
 			switch (plotUnits,
 				\scalar, { if (bipolar) { 0 } { rhoMin } },
 				\db, {
-					if (bipolar) { rhoMin !? { max(clipDbLow, rhoMin) } } { rhoMin }
-					// rhoMin, // rhoMinMax_ will check min against clipDbLow
+					if (bipolar) {
+						rhoMin !? { max(clipDbLow, rhoMin) }
+					} {
+						rhoMin
+					}
 				}
 			),
 			rhoMax,
@@ -415,6 +427,12 @@ PolarView : ValuesView {
 
 	rhoSpec_ { |spec, recalcNow = true, refresh = true|
 		var gridlinesNorm;
+
+		// catch spec range of zero
+		if (spec.range == 0) {
+			spec = spec.minval_(min(0, spec.minval));
+			spec = spec.maxval_(max(1, spec.maxval));
+		};
 
 		this.rhoGridLines !? {
 			// store unmapped value of gridlines
@@ -730,10 +748,8 @@ PolarPlotLayer : ValueViewLayer {
 
 		view.plotData.do{ |dataset, i|
 			var sType, pnts, thisColor, negColor, strokeLine, dataColors;
-
 			pntCnt = 0;
-
-			// Pen.push;
+Pen.push;
 			// generate data point coordinates
 			pnts = dataset.collect{ |val, j|
 				Polar(
@@ -744,17 +760,15 @@ PolarPlotLayer : ValueViewLayer {
 				).asPoint;
 			};
 
+			Pen.moveTo(pnts[0]);
+			Pen.width_(p.strokeWidth);
 			sType = sTypes.wrapAt(i);
 			strokeLine = (sType != \points);
 			if (sType.isKindOf(FloatArray)) {
 				Pen.lineDash_(sType)
 			};
 
-			Pen.moveTo(pnts[0]);
-			Pen.width_(p.strokeWidth);
-
 			if (view.bipolar) {
-
 				/* bipolar = true, data reflects off 0 */
 
 				// create data structure to store colors for data segments
@@ -846,6 +860,7 @@ PolarPlotLayer : ValueViewLayer {
 					Pen.stroke;
 				}
 			};
+			Pen.pop;
 		};
 		Pen.pop;
 	}
@@ -879,23 +894,25 @@ PolarPlotLayer : ValueViewLayer {
 PolarGridLayer : ValueViewLayer {
 	*properties {
 		^(
-			show:         true,
-			fill:         true,
-			fillColor:    Color.white,
+			show:           true,
+			fill:           true,
+			fillColor:      Color.white,
 			showThetaLines: true,
-			showRhoLines: true,
-			strokeColor:  Color.gray.alpha_(0.4), // grid color
-			showThetaVals: true,
-			showRhoVals:  true,
-			rhoTxtColor:  Color.gray.alpha_(0.4),
+			showRhoLines:   true,
+			strokeColor:    Color.gray.alpha_(0.4), // grid color
+			showThetaVals:  true,
+			showRhoVals:    true,
+			rhoTxtColor:    Color.gray.alpha_(0.4),
 			thetaTxtColor:  Color.gray,
-			rhoTxtRound:  0.01,
+			rhoTxtRound:    0.01,
 			thetaTxtRound:  1,
 			thetaTxtWrap:   [0, 2pi], // wrap the grid's theta (longitude) text labels around these, in radians
 			thetaTxtUnits:  \degrees, // or \radians, or \pi
-			rhoTxtAng:    0,        // radian angle of rho (latitude) labels, relative to thetaZeroPosition
+			rhoTxtAng:      0,        // radian angle of rho (latitude) labels, relative to thetaZeroPosition
 			thetaTxtOffset: 0.065,    // percentage of the radius
-			strokeWidth:  1,
+			strokeWidth:    1,
+			rhoTxtOrientation: \horizontal,  // \horizontal for always horizontal, \radial to follow the rho line
+			rhoTxtAlign:    \inside,  // text placement relative to rho grid lines: \inside, \outside, \on
 		)
 	}
 
@@ -937,7 +954,7 @@ PolarGridLayer : ValueViewLayer {
 
 		/* rho labels */
 		if (p.showRhoVals) {
-			var str, theta, strBnds, corner, thetaMod;
+			var str, theta, strBnds, corner, thetaMod, strRot;
 
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
@@ -945,28 +962,81 @@ PolarGridLayer : ValueViewLayer {
 			theta = view.prZeroPos + (p.rhoTxtAng * view.dirFlag);
 			thetaMod = theta % 2pi;
 
-			view.rhoGridLinesNorm.do{ |level, i|
-				corner = Polar(level * rad, theta).asPoint;
-				str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
-				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
+			if (p.rhoTxtOrientation == \radial) {
+				strRot = (theta+0.5pi).wrap(-0.5pi, 0.5pi);
 
-				if (thetaMod.inRange(0,pi),
-					{ strBnds.bottom_(corner.y) },
-					{ strBnds.top_(corner.y) }
-				);
+				view.rhoGridLinesNorm.do{ |level, i|
+					corner = Polar(level * rad, theta).asPoint;
+					str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
+					strBnds = (str.bounds.asArray + [0,0,2,2]).asRect.center_(0@0);
+					if (p.rhoTxtAlign != \on) {
+						if (thetaMod.inRange(0,pi),
+							{   // bottom
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.bottom_(0) },
+									\outside, { strBnds.top_(0) }
+								)
+							}, { // top
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.top_(0) },
+									\outside, { strBnds.bottom_(0) }
+								)
+							}
+						);
 
-				if ((thetaMod < 0.5pi) or: (thetaMod > 1.5pi),
-					{ strBnds.right_(corner.x) },
-					{ strBnds.left_(corner.x) }
-				);
+					};
+					Pen.push;
+					Pen.translate(corner.x, corner.y);
+					Pen.rotate(strRot);
+					Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
+					Pen.pop;
+				};
+			} { // p.rhoTxtOrientation: == \horizontal, or default if invalid
+				view.rhoGridLinesNorm.do{ |level, i|
+					corner = Polar(level * rad, theta).asPoint;
+					str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
+					strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
 
-				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
+					if (p.rhoTxtAlign == \on) {
+						strBnds = strBnds.center_(corner);
+					} {
+						if (thetaMod.inRange(0,pi),
+							{   // bottom
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.bottom_(corner.y) },
+									\outside, { strBnds.top_(corner.y) }
+								)
+							}, { // top
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.top_(corner.y) },
+									\outside, { strBnds.bottom_(corner.y) }
+								)
+							}
+						);
+
+						if ((thetaMod < 0.5pi) or: { thetaMod > 1.5pi },
+							{   // right side
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.right_(corner.x) },
+									\outside, { strBnds.left_(corner.x) }
+								)
+							}, { // left side
+								switch(p.rhoTxtAlign,
+									\inside,  { strBnds.left_(corner.x) },
+									\outside, { strBnds.right_(corner.x) }
+								)
+							}
+						);
+					};
+
+					Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
+				};
 			};
 			Pen.pop;
 		};
 		Pen.pop;
 
-		/* longitude labels */
+		/* theta labels */
 		if (p.showThetaVals) {
 			var str, strVal, theta, strBnds, txtCen, thetaMod, wrapBnds, rnd;
 
@@ -1072,6 +1142,7 @@ PolarLegendLayer : ValueViewLayer {
 			Pen.push;
 			nElem.do{ |i|
 				var nloops;
+				Pen.push;
 				if (view.bipolar) { // bipolar draws both pos and neg color lines
 					nloops = 2;
 					h_2 = txtRects[0].height/3;
@@ -1155,6 +1226,7 @@ PolarLegendLayer : ValueViewLayer {
 						cursor.y = cursor.y + txtRects[0].height + p.spacing;
 					}
 				);
+				Pen.pop;
 			};
 			Pen.pop;
 			Pen.pop;
@@ -1236,6 +1308,7 @@ PolarTitleLayer : ValueViewLayer {
 	*properties {
 		^(
 			show:        true,
+			fill:        true,
 			fillColor:   Color.white,
 			txtColor:    Color.gray,
 			inset:       10,    // pixel distance inset from the top of the view
@@ -1264,15 +1337,17 @@ PolarTitleLayer : ValueViewLayer {
 	}
 
 	fill {
-		if (bndCalcd.not) {
-			this.calcBounds;
-			bndCalcd = false
+		if (p.fill) {
+			if (bndCalcd.not) {
+				this.calcBounds;
+				bndCalcd = false
+			};
+			Pen.push;
+			Pen.fillColor_(p.fillColor);
+			Pen.fillRect(bgRect);
+			Pen.fill;
+			Pen.pop;
 		};
-		Pen.push;
-		Pen.fillColor_(p.fillColor);
-		Pen.fillRect(bgRect);
-		Pen.fill;
-		Pen.pop;
 	}
 
 	calcBounds {
