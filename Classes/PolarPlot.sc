@@ -45,13 +45,14 @@ PolarView : ValuesView {
 
 	*new {
 		|parent, bounds, data, thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \ccw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
-		^super.new(parent, bounds, [thetaBounds.asSpec], data).init(
-			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition, plotRadius, dataUnits, plotUnits, bipolar
+		^super.new(parent, bounds, [thetaBounds.asSpec], data ?? { [0] }).init(
+			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition,
+			plotRadius, dataUnits, plotUnits, bipolar, data.notNil
 		);
 	}
 
 
-	init { |argThetaArray, argThetaBounds, argRhoBounds, argThetaDirection, argThetaZeroPosition, argPlotRadius, argDataUnits, argPlotUnits, argBipolar|
+	init { |argThetaArray, argThetaBounds, argRhoBounds, argThetaDirection, argThetaZeroPosition, argPlotRadius, argDataUnits, argPlotUnits, argBipolar, argInitWithData|
 		var nodata = false;
 		// REQUIRED: in subclass init, initialize drawing layers
 		layers = [
@@ -97,11 +98,8 @@ PolarView : ValuesView {
 		};
 
 		bipolar = argBipolar;
+		if (argInitWithData.not) { defaultData = true }; // catch for initializing min/max spec
 
-		this.values ?? {
-			values = [0];
-			defaultData = true; // catch for initializing min/max spec
-		};
 		this.data_(values, argThetaArray ?? { [thetaMin, thetaMax] }, argDataUnits, bipolar, refresh: false);
 
 		thetaGridLineSpacing = pi/6;
@@ -698,6 +696,29 @@ PolarView : ValuesView {
 			miny + maxy,  // diff between min and max y
 			width, height
 		);
+	}
+
+	// write the plot to an image file
+	export { |fileName, directory = (Platform.userHomeDir), format, quality = -1, finishCond|
+		var fnPn, dirPn, path, img, win;
+		fnPn = PathName(fileName);
+		dirPn = PathName(directory);
+		if (File.exists(dirPn.fullPath).not) {
+			Error("Target directory doens't exist. No image saved.").errorString.postln;
+			^this
+		};
+
+		path = (dirPn +/+ fnPn).fullPath;
+		fork ({
+			postf("Writing the plot to: % ...", path);
+			img = Image.fromWindow(this, this.bounds.origin_(0@0));
+			win = img.plot(freeOnClose:true);
+			0.3.wait;
+			img.write(path, format, quality);
+			win.close;
+			"done.".postln;
+			finishCond !? { finishCond.test_(true).signal };
+		}, AppClock);
 	}
 }
 
@@ -1367,5 +1388,4 @@ PolarTitleLayer : ValueViewLayer {
 		txtRect = txtRect.center_(bgRect.center);
 		bndCalcd = true;
 	}
-
 }
