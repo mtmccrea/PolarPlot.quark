@@ -734,7 +734,8 @@ PolarPlotLayer : ValueViewLayer {
 			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
 			pointRad:    2,            // if strokeType == \points, circles have pointRad radius. if nil, pointRad == strokeWidth
 			strokeTypes: [\line],      // or: \points, or FloatArray.with(5, 2, 3, 2); (dashed alternating 5px, 3px lines separated by 2px)
-			negativeColors: [0.09]     // Colors or floats which create a hue shift from the plotColor
+			negativeColors: [0.09],    // Colors or floats which create a hue shift from the plotColor
+			fillPoints:  false
 		)
 	}
 
@@ -770,7 +771,7 @@ PolarPlotLayer : ValueViewLayer {
 		view.plotData.do{ |dataset, i|
 			var sType, pnts, thisColor, negColor, strokeLine, dataColors;
 			pntCnt = 0;
-Pen.push;
+			Pen.push;
 			// generate data point coordinates
 			pnts = dataset.collect{ |val, j|
 				Polar(
@@ -853,9 +854,15 @@ Pen.push;
 				/* bipolar = false */
 
 				thisColor = p.plotColors.asArray.wrapAt(i);
-				Pen.strokeColor_(thisColor);
 
 				if (p.fill or: { strokeLine }) {
+					// in case colors are specified individually
+					// (only supported with \points)
+					if (thisColor.isKindOf(Array)) {
+						thisColor = thisColor[0]
+					};
+					Pen.strokeColor_(thisColor);
+
 					// create Pen path
 					pnts.do{ |pnt| Pen.lineTo(pnt) };
 
@@ -877,8 +884,28 @@ Pen.push;
 					var rad, rect;
 					rad = p.pointRad ?? p.strokeWidth;
 					rect = [0,0,rad*2, rad*2].asRect;  // data point circle
-					pnts.do{ |pnt| Pen.addOval(rect.center_(pnt)) };
-					Pen.stroke;
+
+					if (thisColor.isKindOf(Array)) {
+						// individual colors for each point
+						pnts.do{ |pnt, i|
+							if (p.fillPoints) {
+								Pen.fillColor_(thisColor[i]);
+								Pen.fillOval(rect.center_(pnt));
+							} {
+								Pen.strokeColor_(thisColor[i]);
+								Pen.strokeOval(rect.center_(pnt));
+							}
+						}
+					} {
+						pnts.do{ |pnt| Pen.addOval(rect.center_(pnt)) };
+						if (p.fillPoints) {
+							Pen.fillColor_(thisColor);
+							Pen.fill;
+						} {
+							Pen.strokeColor_(thisColor);
+							Pen.stroke;
+						}
+					};
 				}
 			};
 			Pen.pop;
@@ -892,7 +919,13 @@ Pen.push;
 		var negColor, posColor;
 
 		^if (sign.isPositive) {
-			p.plotColors.asArray.wrapAt(chanIdx)
+			posColor = p.plotColors.asArray.wrapAt(chanIdx);
+			// individual colors for each data point isn't supported
+			// in bipolar mode, so just take first color
+			if (posColor.isKindOf(Array)) {
+				posColor = posColor[0]
+			};
+			posColor
 		} {
 			// negative values
 			negColor = p.negativeColors.asArray.wrapAt(chanIdx);
@@ -903,7 +936,9 @@ Pen.push;
 				// negColor is a number, create a Color
 				// with value shift from plotColor
 				posColor = p.plotColors.asArray.wrapAt(chanIdx);
-				// Color.hsv(*(posColor.asHSV[2] = posColor.asHSV[2] * negColor));
+				if (posColor.isKindOf(Array)) {
+					posColor = posColor[0] // see note in positive case regarding individual colors
+				};
 				Color.hsv(*(posColor.asHSV[0] = (posColor.asHSV[0] + negColor).wrap(0, 0.999)));
 			};
 		};
@@ -1162,7 +1197,7 @@ PolarLegendLayer : ValueViewLayer {
 
 			Pen.push;
 			nElem.do{ |i|
-				var nloops;
+				var nloops, sColor;
 				Pen.push;
 				if (view.bipolar) { // bipolar draws both pos and neg color lines
 					nloops = 2;
@@ -1184,9 +1219,8 @@ PolarLegendLayer : ValueViewLayer {
 
 						nloops.do { |j| // loop twice in the case of two lines for bipolar data
 							h_2 = h_2 * (j+1);
-							Pen.strokeColor_( view.plots.prGetDataColor(1 - (2*j), i));
 							cursor = stcursor;
-
+							sColor = view.plots.prGetDataColor(1 - (2*j), i);
 							// w = margin-lineLength-lineSpacing-text length-spacing-lineLength-lineSpacing-text length-margin, etc
 							if (strokeTypes.wrapAt(i) == \points) {
 								cursor = cursor + (cOff@h_2);
@@ -1196,14 +1230,22 @@ PolarLegendLayer : ValueViewLayer {
 									Pen.addOval(cRect.center_(cursor));
 								};
 								cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
+								if (view.plots.p.fillPoints) {
+									Pen.fillColor_(sColor);
+									Pen.fill;
+								} {
+									Pen.strokeColor_(sColor);
+									Pen.stroke;
+								}
 							} { // lines or dashes
 								cursor = cursor + (0@h_2);
 								Pen.moveTo(cursor);
 								cursor = cursor + (p.lineLength@0);
 								Pen.lineTo(cursor);
 								cursor = cursor + (p.lineSpacing@h_2.neg);
+								Pen.strokeColor_(sColor);
+								Pen.stroke;
 							};
-							Pen.stroke;
 						};
 
 						Pen.stringLeftJustIn(
@@ -1217,7 +1259,7 @@ PolarLegendLayer : ValueViewLayer {
 
 						nloops.do { |j| // loop twice in the case of two lines for bipolar data
 							h_2 = h_2 * (j+1);
-							Pen.strokeColor_(view.plots.prGetDataColor(1 - (2*j), i));
+							sColor = view.plots.prGetDataColor(1 - (2*j), i);
 							cursor = stcursor;
 
 							// h = margin-txtHeight-spacing-txtHeight-margin
@@ -1229,14 +1271,22 @@ PolarLegendLayer : ValueViewLayer {
 									Pen.addOval(cRect.center_(cursor));
 								};
 								cursor = cursor + ((cOff+p.lineSpacing)@h_2.neg);
+								if (view.plots.p.fillPoints) {
+									Pen.fillColor_(sColor);
+									Pen.fill;
+								} {
+									Pen.strokeColor_(sColor);
+									Pen.stroke;
+								}
 							} { // lines or dashes
 								cursor = cursor + (0@h_2);
 								Pen.moveTo(cursor);
 								cursor = cursor + (p.lineLength@0);
 								Pen.lineTo(cursor);
 								cursor = cursor + (p.lineSpacing@h_2.neg);
+								Pen.strokeColor_(sColor);
+								Pen.stroke;
 							};
-							Pen.stroke;
 						};
 
 						Pen.stringLeftJustIn(
