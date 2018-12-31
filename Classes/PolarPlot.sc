@@ -58,9 +58,7 @@ PolarView : ValuesView {
 		layers = [
 			PolarPlotLayer, PolarGridLayer,
 			PolarLegendLayer, PolarTitleLayer
-		].collect({ |class|
-			class.new(this, class.properties)
-		});
+		].collect({ |class| class.new(this) });
 
 		// unpack the layers list into individual variables
 		#plots, grid, legend, title = layers;
@@ -69,7 +67,9 @@ PolarView : ValuesView {
 		plotUnits = argPlotUnits ?? { argDataUnits };
 		thetaDirection = argThetaDirection;
 		dirFlag = switch (thetaDirection, \cw, {1}, \ccw, {-1});
-		thetaZeroPosition = if (argThetaZeroPosition.isKindOf(Number)) {argThetaZeroPosition} {
+		thetaZeroPosition = if (argThetaZeroPosition.isKindOf(Number)) {
+			argThetaZeroPosition
+		} {
 			switch(argThetaZeroPosition,
 				\top,    { 0 },
 				\bottom, { pi },
