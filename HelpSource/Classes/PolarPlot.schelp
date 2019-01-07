@@ -15,20 +15,23 @@ CLASSMETHODS::
 METHOD:: new
 Create a new link::Classes/PolarView::.
 
-ARGUMENT:: parent
-An optional parent view in which to embed the link::Classes/PolarView::. If
-code::nil::, a new window is created for the plot.
+argument:: parent
+An optional parent link::Classes/Window:: or link::Classes/View:: in which to
+embed  the link::Classes/PolarView::. If code::nil::, a new window is created
+for the plot and the strong::bounds:: link::Classes/Rect:: specifies the
+dimensions of the newly created link::Classes/Window:: and its location on the
+screen.
 
-ARGUMENT:: bounds
-A link::Classes/Rect:: specifying the view's origin within the strong::parent::
-view, and its dimensions.
+argument:: bounds
+A link::Classes/Rect:: specifying the view's origin within the
+strong::parent:: view, and its dimensions.
 
-ARGUMENT:: data
+argument:: data
 An link::Classes/Array:: of data to plot. 2D arrays are considered multichannel
 data and plotted separately, each with settable attribute. See the properties
 of the link::#-plots:: drawing layer.
 
-ARGUMENT:: thetaArray
+argument:: thetaArray
 An link::Classes/Array:: of values corresponding to angular positions of each
 data point, or an array of to be interpreted as envelope breakpoints into which
 the data is mapped (typically just a start and end position). 2D arrays are
@@ -36,14 +39,14 @@ treated the same as with strong::data::. For more details see link::#-data::.
 If code::nil:: thetaArray matches strong::thetaBounds::, mapping the data into
 the full sweep range of your plot.
 
-ARGUMENT:: thetaBounds
+argument:: thetaBounds
 An link::Classes/Array:: of 2 elements: the lower and upper bound of the sweep
 of the plot. These bounds can be describe a plot range equal to or greater than
 the  ranges of strong::thetaArray::. The values are relative to the
 strong::thetaZeroPosition:: and strong::thetaDirection::.
 Default is code::[0, 2pi]::.
 
-ARGUMENT:: rhoBounds
+argument:: rhoBounds
 An link::Classes/Array:: of 2 elements: the lower and upper radial bounds of the
 plot. If code::nil::, the bounds will be the maximum and minumum value of your
 strong::data::. If your data lies outside the range of your strong::rhoBounds::,
@@ -52,17 +55,17 @@ Note that if your strong::plotUnits:: are code::\db::, your data will be also
 be clipped by link::#-clipDbLow:: in the case this is greater than your lower
 bound.
 
-ARGUMENT:: thetaDirection
+argument:: thetaDirection
 The sweep direction of the plot, code::\cw:: or code::\ccw::, clockwise or
 counter-clockwise, respectively. Default code::\cw::.
 
-ARGUMENT:: thetaZeroPosition
+argument:: thetaZeroPosition
 A radian value or position keyword (code::\top::, code::\botom::, code::\left::,
 code::\right::) specifying the anglular position of code::0::. When setting this
 by a radian value, reference angle code::0:: at the top of the plot (12 o'clock),
 advancing in the direction set by the strong::thetaDirection:: argument.
 
-ARGUMENT:: plotRadius
+argument:: plotRadius
 A value normalized to the radius of the view, where code::1.0:: would extend the
 plot radius to the edge of the view. Default code::0.9::.
 Note::The values of the link::#-thetaGridLines:: displayed in the
@@ -70,16 +73,22 @@ link::#-grid:: are drawn just outside the plot's radius, so use a value less
 than code::1.0:: to allow room for these labels if you plan to include labels
 for the theta grid lines.::
 
-ARGUMENT:: dataUnits
+argument:: dataUnits
 The unit of measurement of your strong::data::: code::\db:: or code::\scalar::.
 Default code::\scalar::. This need not match the strong::plotUnits:: argument,
 which determines the units the data are displayed in.
 
-ARGUMENT:: plotUnits
+argument:: plotUnits
 The unit of measurement to emphasis::display:: in the plot: code::\db::
 or code::\scalar::. Defaults to strong::dataUnits::. The data need not be
 provided in the same units as the plot—conversion to the plot's units happens
 internally.
+
+argument:: bipolar
+A link::Classes/Boolean:: indicating whether or not the data should be
+displayed as bipolar, i.e. a given dataset contains values that are both
+positive and negative. See link::#-bipolar:: for more details.
+Default is code::false::.
 
 
 INSTANCEMETHODS::
@@ -95,13 +104,13 @@ relative to the code::\top:: (12 o'clock) position, and
 the link::#-thetaDirection:: you specify (clockwise or counterclockwise).
 link::#-thetaMin:: is defined relative to this position.
 
-ARGUMENT:: radiansOrDir
+argument:: radiansOrPosition
 A radian angle, referencing code::0:: as up, and a positive offset
 from code::0:: degrees in either a clockwise or counterclockwise direction as
 specified by link::#-thetaDirection::. Also accepts
 keywords: code::\top::, code::\botom::, code::\left::, code::\right::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -111,35 +120,38 @@ Get/set the positive direction of the plot: clockwise or counterclockwise. This
 affects the display of the data, as well as the direction of the offset of the
 link::#-thetaMin:: from the link::#-thetaZeroPosition::.
 
-ARGUMENT:: dir
+argument:: direction
 A link::Classes/Symbol::, code::\cw:: or code::\ccw::.
 
+argument:: refresh
+A link::Classes/Boolean::, specifying whether to refresh the view immediately.
+Default is code::true::.
 
 
 SUBSECTION:: Grid Lines
 
 
 METHOD:: rhoGridLines
-Set the range and interval of rho (latitude) lines on the plot. Return the
+Set/get the range and interval of rho (latitude) lines on the plot. Return the
 calculated rho values with the getter method of the same name.
 
 To set specific rho values, use link::#-rhoGridLinesAt::.
 
-ARGUMENT:: spacing
+argument:: spacing
 The increment between rho lines, in link::#-plotUnits::.
 
-ARGUMENT:: from
+argument:: from
 The first value at which to draw a rho line, in link::#-plotUnits::. Also
 accepts keywords code::\min:: and code::\max::, which correspond to the bounds
 of the link::#-plotSpec::. Defaults to code::\max::, which ensures a rho line
 is drawn at the outmost edge of the plot.
 
-ARGUMENT:: to
+argument:: to
 The last value to draw a level line, in link::#-plotUnits::. Also accepts
 keywords code::\min:: and code::\max::, which correspond to the bounds
 of the link::#-plotSpec::. Default code::\min::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -148,12 +160,12 @@ METHOD:: rhoGridLinesAt
 Draw data rho (latitude) grid lines at specific values, as opposed to even
 intervals as in link::#-rhoGridLines::.
 
-ARGUMENT:: rhoArray
+argument:: rhoArray
 An link::Classes/Array:: of values at which to draw rho (latitude) lines on the
 plot. Values should be in the same units as link::#-plotUnits::. Levels that are
 out of the range of the link::#-rhoSpec:: are discarded.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -164,10 +176,10 @@ calculated theta values with the getter method of the same name.
 
 To set specific theta values, use link::#-thetaGridLinesAt::.
 
-ARGUMENT:: spacing
+argument:: spacing
 The increment between theta lines, in radians.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -176,15 +188,19 @@ METHOD:: thetaGridLinesAt
 Draw theta (longitude) grid lines at specific values, as opposed to even
 intervals as in link::#-thetaGridLines::.
 
-ARGUMENT:: thetaArray
+argument:: thetaArray
 An link::Classes/Array:: of values at which to draw longitude lines on the plot,
 in radians. Values that are out of the range of code::thetaMin:: and
 code::thetaMin + thetaRange:: are discarded.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
+
+METHOD:: rhoGridLinesNorm
+Get an link::Classes/Array:: of values at which are the
+link::#-rhoGridLines::. normalized to code::[this.rhoMin .. this.rhoMax]::.
 
 
 SUBSECTION:: Bounds of data display
@@ -193,10 +209,10 @@ SUBSECTION:: Bounds of data display
 METHOD:: thetaMin
 Set/get the angular position of the plot's minimum bound.
 
-ARGUMENT:: radians
+argument:: radians
 A radian angle, relative to link::#-thetaZeroPosition:: and link::#-thetaDirection::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -204,10 +220,10 @@ Default is code::true::.
 METHOD:: thetaRange
 Set/get the sweep length of the plot, starting from link::#-thetaMin::.
 
-ARGUMENT:: radians
+argument:: radians
 Sweep length of the plot, in radians.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -217,15 +233,15 @@ Set the min and max rho values displayed on the plot, in link::#-plotUnits::.
 Data outside this range is clipped. This is the preferred way to set the min and
 max at the same time.
 
-ARGUMENT:: min
+argument:: min
 Minimum value to display, in link::#-plotUnits::. If code::nil::, the minimum
 will be inferred from the data.
 
-ARGUMENT:: max
+argument:: max
 Maximum value to display, in link::#-plotUnits::. If code::nil::, the maximum
 will be inferred from the data.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -235,17 +251,17 @@ Set the minimum rho values displayed on the plot.
 Data outside this range is clipped. To set both the min and max at the same time,
 it's more efficient to use link::#-rhoMinMax::.
 
-ARGUMENT:: min
+argument:: min
 Minimum value to display, in link::#-plotUnits::.  If code::nil::, the minimum
 will be inferred from the data.
 
-ARGUMENT:: rescaleNow
+argument:: recalcNow
 A link::Classes/Boolean::, specifying whether to recalculate internal data
 immediately. Many of these calculations would be redundant of followed by
 setting link::#-rhoMax:: (hence the link::#-rhoMinMax:: method), which is
 noticeable with large data sets. Default is code::true::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -255,17 +271,17 @@ Set the maximum rho values displayed on the plot.
 Data outside this range is clipped. To set both the min and max at the same time,
 it's more efficient to use link::#-rhoMinMax::.
 
-ARGUMENT:: max
+argument:: max
 Maximum value to display, in link::#-plotUnits::. If code::nil::, the maximum
 will be inferred from the data.
 
-ARGUMENT:: rescaleNow
+argument:: recalcNow
 A link::Classes/Boolean::, specifying whether to recalculate internal data
 immediately. Many of these calculations would be redundant of followed by
 setting link::#-rhoMin:: (hence the link::#-rhoMinMax:: method), which is
 noticeable with large data sets. Default is code::true::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -279,19 +295,19 @@ and max values of strong::rhoSpec:: reflect the emphasis::actual:: bounds into
 which the data is mapped.  These are the values returned from
 link::#-plotMin:: and link::#-plotMax::.
 
-ARGUMENT:: spec
+argument:: spec
 A link::Classes/ControlSpec:: with minval and maxval in link::#-plotUnits::.
 Specifying a non-linear strong::warp:: in this link::Classes/ControlSpec::
 allow you to display your data (and grid lines) on a warped scaling
 (see also link::#-rhoWarp::).
 
-ARGUMENT:: recalcNow
+argument:: recalcNow
 A link::Classes/Boolean::, specifying whether to recalculate the internal data
 immediately (recommended). In some special cases, e.g. large datasets and
 multiple parameter-setting operations, you may want to only rescale the data at
 the end of all of the operations. Default is code::true::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -304,10 +320,24 @@ link::#-rhoGridLinesAt:: depending if you prefer specific rho spacing or pixel
 spacing.
 ::
 
-ARGUMENT:: warpOrNum
+argument:: warpOrNum
 A link::Classes/Warp::, or one of it's subclasses, or a
 link::Classes/Number::, which will be interpreted as a
 link::Classes/CurveWarp::, as with link::Classes/Env::.
+
+
+METHOD:: plotMin
+Get the minimum rho bound of the plot. This is equivalent to
+code::rhoSpec.minval::, but not the same as link::#-rhoMin::, which can
+return code::nil:: (minimum value is auto-detected). So this method will give
+you the actual minimum value of the plot.
+
+
+METHOD:: plotMax
+Get the maximum rho bound of the plot. This is equivalent to
+code::rhoSpec.maxval::, but not the same as link::#-rhoMax::, which can
+return code::nil:: (maximum value is auto-detected). So this method will give
+you the actual maximum value of the plot.
 
 
 METHOD:: plotUnits
@@ -317,34 +347,38 @@ The data you set need not match the plot's units, your data
 units are set through the link::#-data:: method, and is converted to the plot's
 units for display.
 
-ARGUMENT:: dbOrScalar
+argument:: dbOrScalar
 A link::Classes/Symbol::: code::\db:: or code::\scalar::.
 
-ARGUMENT:: min
+argument:: min
 The minimum value at which to clip the plot levels, in link::#-plotUnits::.
 
-ARGUMENT:: max
+argument:: max
 The maximum value at which to clip the plot levels, in link::#-plotUnits::.
 
 
 METHOD:: bipolar
-Set the plot to display the absolute value of the data (dB values will be
-converted to scalar, take the absolute value, then back to dB),
-with negative values shown as a different color. In other words, the sign of the
-values is indicated through color. Colors of negative values are set by the
-link::#-plots#negativeColors:: attribute of the link::#-plots:: layer. For
-example, a figure-of-eight microphone response pattern would be displayed with a
-link::#-rhoSpec:: range of code::[0, 1]::, but the positive and negative phase
-lobes would each be drawn with a different color.
+Set the plot to display the absolute value of the data, with negative values
+shown as a different color. In other words, the sign of the
+values is indicated through color—think of the display of a figure-of-eight
+microphone pattern, where positive and negative lobes are different colors.
+Decibel values work as well; internally values will be converted to scalar,
+the absolute value taken, then converted back to dB.
+Colors of negative values are set by the
+link::#-plots#negativeColors:: attribute of the link::#-plots:: layer.
 Note:: If you have specified your dataset to have individual colors for each
 datapoint, this will be ingnored in bipolar mode, and the first color from the
 color array for that dataset is used.::
 
-ARGUMENT:: bool
+a given dataset contains values that are both
+positive and negative. , and should be reflected off of a minimum value of
+code::0::, with positive and negative values having different colors. Think of a figure-of-eight microphone pattern, for example.
+
+argument:: bool
 A link::Classes/Boolean:: indicating whether the data should be displayed as
 bipolar or not.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -362,11 +396,11 @@ SUBSECTION:: Setting Plot Data
 METHOD:: data
 Set the data to plot.
 
-ARGUMENT:: dataArray
+argument:: dataArray
 An link::Classes/Array:: of values to plot. If the array is 2D, the data is
 considered to be multichannel and will plot the values of each sub-array.
 
-ARGUMENT:: thetaArray
+argument:: thetaArray
 An link::Classes/Array:: of values corresponding to angular positions of each
 data point. 2D arrays are treated the same as in strong::dataArray::.
 
@@ -383,17 +417,17 @@ of strong::dataArray:: into the range of code::0:: to code::2pi::.
 If code::nil::, dataArray is mapped evenly into the range
 code::[thetaMin, thetaMax]::.
 
-ARGUMENT:: units
+argument:: units
 A link::Classes/Symbol:: indicating the units of the data in strong::dataArray:::
 code::\db:: or code::\scalar::. This is independent of link::#-plotUnits::.
 Default code::\scalar::.
 
-ARGUMENT:: bipolar
+argument:: bipolar
 A link::Classes/Boolean::, specifying whether the data should be considered
 bipolar, where data is plotted as values, and color indicates polarity/phase.
 See link::#-bipolar::. Default is code::false::.
 
-ARGUMENT:: refresh
+argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
 Default is code::true::.
 
@@ -405,20 +439,20 @@ SUBSECTION:: Appearance
 METHOD:: plotRadius
 Get/set the normalized value of the plot radius.
 
-ARGUMENT:: normRadius
-A value normalized to the radius of the view (the half-length of its smallest
-side), where code::1.0:: would extend the plot radius to the edge of the view.
-Default code::0.9::.
+argument:: normRadius
+A value in the range code::(0..1)::, which is normalized to the radius of the
+view (the half-length of its smallest side). I.e. code::1.0:: would extend the
+plot radius to the edge of the view. Default code::0.9::.
 Note:: The labels of the link::#-thetaGridLines:: displayed on the edge of the
 link::#-grid:: are drawn just outside the plot's radius, so use a value less
-than code::1.0:: to allow room for these labels if you plan to include labels
+than code::1.0:: to allow room for these labels if you want to include labels
 for the theta grid lines.::
 
 
 METHOD:: background
 Get/set the background color of the view.
 
-ARGUMENT:: color
+argument:: color
 A link::Classes/Color::.
 
 
@@ -567,6 +601,16 @@ Return the plot data in scalar values. I.e. if link::#-data:: was set with
 code::\db:: values, link::#-scalarData:: returns code::data.dbamp::.
 
 
+METHOD:: dataScalarMin
+Get the minimum value of the emphasis::data:: (which is not necessarily the
+minimum of the plot range), as a scalar value.
+
+
+METHOD:: dataScalarMax
+Get the maximum value of the emphasis::data:: (which is not necessarily the
+maximum of the plot range), as a scalar value.
+
+
 METHOD:: plotData
 Get the data stored internally for plotting, unmapped (normalized 0 .. 1) from
 link::#-plotSpec::.
@@ -601,32 +645,32 @@ SUBSECTION:: Other
 METHOD:: export
 Export the plot to an image file.
 
-ARGUMENT:: fileName
+argument:: fileName
 A link::Classes/String:: that is the name of the file, including the extension.
 The extension isn't necessary, but you'll then need to specify the
 strong::format:: and the file will be written without an extension.
 
-ARGUMENT:: directory
+argument:: directory
 A link::Classes/String:: that is the directory into which the file will be
 written. Default is the user home directory, code::Platform.userHomeDir::.
 
-ARGUMENT:: format
+argument:: format
 An optional link::Classes/String:: of the format to use.
 code::Image.formats:: lists supported formats.
 If code::nil::, the format will be inferred from the path extension (the
 default).
 
-ARGUMENT:: quality
+argument:: quality
 The quality factor in the range code::0::, small compressed files, to
 code::100::, large uncompressed files, or code::-1::, the default settings.
 Default is code::-1::.
 
-ARGUMENT:: finishCond
+argument:: finishCond
 An optional link::Classes/Condition:: which will be set code::true:: and signal
 when the image has been written.
 
 
-PRIVATE:: prStartAngle, prZeroPos, prRescalePlotData, prPlotRad, prThetaLines, prPlotCen, prSweepLength, drawInThisOrder, defineMouseActions, init, drawFunc, dirFlag, prThetaGridLinesAt, prRhoGridLinesAt
+PRIVATE:: prStartAngle, prZeroPos, prRescalePlotData, prPlotRad, prThetaLines, prPlotCen, prSweepLength, drawInThisOrder, defineMouseActions, init, drawFunc, dirFlag, prThetaGridLinesAt, prRhoGridLinesAt, prThetaGridLines, prThetaRange, prPlotBounds, prGetRhoGridLinesFromSpacing, pr ClacDataBounds, prAngInRange, prCalcDataBounds
 
 EXAMPLES::
 
