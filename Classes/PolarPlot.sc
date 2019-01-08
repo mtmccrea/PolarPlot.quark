@@ -1,11 +1,10 @@
 /*
 TODO
-- \circle data points, for the option of re-creating rE-style directivity displays
 - invert values so that minimum values are at the radius, max values are at the center
 - optionally resample the data when plotting for radially uniform sample points, instead of
--      one point per data point
-- calculate plot/view dimensions based on actual plot outline (if it's not a circle)
--      so plot is maximized no matter the shape, e.g. a semi-circular or wedge plot
+one point per data point
+- [need improvement] calculate plot/view dimensions based on actual plot outline (if it's
+not a circle) so plot is maximized no matter the shape, e.g. a semi-circular or wedge plot
 - optionally show lattitude scale in a separate, adjacent view that aligns with plot
 - toggle data channels on and off
 */
