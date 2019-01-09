@@ -9,7 +9,7 @@ not a circle) so plot is maximized no matter the shape, e.g. a semi-circular or 
 - toggle data channels on and off
 */
 
-PolarView : ValuesView {
+PolarPlot : ValuesView {
 	// set in drawFunc, for access by drawing layers
 	var <bnds, <cen, <minDim;
 	// layers

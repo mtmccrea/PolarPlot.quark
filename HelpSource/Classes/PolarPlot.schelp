@@ -1,4 +1,4 @@
-TITLE:: PolarView
+TITLE:: PolarPlot
 summary:: A polar plot for data of one or more channels.
 categories:: GUI
 related:: Classes/ValueView, Classes/Plotter
@@ -13,11 +13,11 @@ attributes: grid lines, data plot, title, and legend.
 CLASSMETHODS::
 
 METHOD:: new
-Create a new link::Classes/PolarView::.
+Create a new link::Classes/PolarPlot::.
 
 argument:: parent
 An optional parent link::Classes/Window:: or link::Classes/View:: in which to
-embed  the link::Classes/PolarView::. If code::nil::, a new window is created
+embed  the link::Classes/PolarPlot::. If code::nil::, a new window is created
 for the plot and the strong::bounds:: link::Classes/Rect:: specifies the
 dimensions of the newly created link::Classes/Window:: and its location on the
 screen.
@@ -465,7 +465,7 @@ layer has a code::*properties:: list (an link::Classes/Event::), the keys of
 which can be accessed as pseudo-methods for getting and setting their values.
 Setting an attribute automatically refreshes the view. For example:
 code::
-// assuming you've created a PolarView 'myPolarPlot'
+// assuming you've created a PolarPlot 'myPolarPlot'
 myPolarPlot.title.show = false;    // hide the title box layer
 myPolarPlot.grid.strokeWidth = 2;  // set the stroke width of the grid layer to 2 pixels
 ::
