@@ -1,0 +1,15 @@
+(
+          name: "PolarPlot",
+       summary: "A polar plot for data of one or more channels.",
+        author: "Michael McCrea",
+     copyright: "Ambisonic Toolkit Community, Joseph Anderson, Michael McCrea 2018",
+       license: "GPL",
+       version: "0.1.0",
+        schelp: "PolarPlot",
+           url: "https://github.com/ambisonictoolkit/PolarPlot",
+  dependencies: [
+                    "https://github.com/mtmccrea/ValueView"
+                ],
+  organization: "ATK Community: http://www.ambisonictoolkit.net",
+         since: "2018"
+)

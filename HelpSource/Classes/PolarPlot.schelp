@@ -4,7 +4,7 @@ categories:: GUI
 related:: Classes/ValueView, Classes/Plotter
 
 DESCRIPTION::
-A radial plot view for viewing data degrees or radians, (e.g. microphone
+A radial plot view for viewing data in degrees or radians, (e.g. microphone
 patterns, cylindrical/spherical harmonics, etc.).
 The plot is comprised of multiple layers, each with their own settable
 attributes: grid lines, data plot, title, and legend.
