@@ -17,10 +17,11 @@ Create a new link::Classes/PolarPlot::.
 
 argument:: parent
 An optional parent link::Classes/Window:: or link::Classes/View:: in which to
-embed  the link::Classes/PolarPlot::. If code::nil::, a new window is created
-for the plot and the strong::bounds:: link::Classes/Rect:: specifies the
-dimensions of the newly created link::Classes/Window:: and its location on the
-screen.
+embed  the link::Classes/PolarPlot::.
+
+If code::nil::, a new window is created for the plot and the
+strong::bounds:: link::Classes/Rect:: specifies the dimensions of the newly
+created link::Classes/Window:: and its location on the screen.
 
 argument:: bounds
 A link::Classes/Rect:: specifying the view's origin within the
@@ -33,31 +34,53 @@ of the link::#-plots:: drawing layer.
 
 argument:: thetaArray
 An link::Classes/Array:: of values corresponding to angular positions of each
-data point, or an array of to be interpreted as envelope breakpoints into which
-the data is mapped (typically just a start and end position). 2D arrays are
-treated the same as with strong::data::. For more details see link::#-data::.
-If code::nil:: thetaArray matches strong::thetaBounds::, mapping the data into
-the full sweep range of your plot.
+data point.
+
+If strong::data:: is 2D (multichannel), this argument can also be a 2D
+link::Classes/Array::, assigning each element to its corresponding
+sub-array in strong::data::. If there are fewer elements in
+strong::thetaArray:: than strong::data::, then sub-arrays
+code::data[i]:: are mapped to code::thetaArray.wrapAt(i)::.
+
+If there is not a theta position for every datapoint, the theta positions are
+considered breakpoints of an link::Classes/Env::, and the data points are
+mapped into that envelope. For example a 100-point strong::dataArray:: paired
+with a strong::thetaArray:: of code::[0, 2pi]:: would be uniformly distributed
+through the range of code::0:: to code::2pi::.
+
+If code::nil:: (the default), strong::dataArray:: is mapped evenly into the
+full sweep range of strong::thetaBounds::.
 
 argument:: thetaBounds
-An link::Classes/Array:: of 2 elements: the lower and upper bound of the sweep
-of the plot. These bounds can be describe a plot range equal to or greater than
-the  ranges of strong::thetaArray::. The values are relative to the
-strong::thetaZeroPosition:: and strong::thetaDirection::.
-Default is code::[0, 2pi]::.
+An link::Classes/Array:: of two radian values: the lower and upper bound of the
+theta range of the plot. The bounds are relative to the
+strong::thetaZeroPosition:: and strong::thetaDirection::. For example,
+strong::thetaBounds:: for a plot showing just a 90-degree spread centered on
+code::0:: would be code::[-pi/4, pi/4]::.
+
+Default is code::[0, 2pi]::, a full 360-degree plot.
+note::
+Values of strong::thetaArray:: outside these bounds are clipped.
+::
 
 argument:: rhoBounds
 An link::Classes/Array:: of 2 elements: the lower and upper radial bounds of the
-plot. If code::nil::, the bounds will be the maximum and minumum value of your
-strong::data::. If your data lies outside the range of your strong::rhoBounds::,
-it will be clipped on the plot.
-Note that if your strong::plotUnits:: are code::\db::, your data will be also
-be clipped by link::#-clipDbLow:: in the case this is greater than your lower
-bound.
+plot.
+
+If code::nil:: (the default), the bounds will be the maximum and minumum value
+of your strong::data::.
+note::
+If your data lies outside the range of strong::rhoBounds::,
+it will be clipped on the plot. If your strong::plotUnits:: are code::\db::,
+your data will be also be clipped by link::#-clipDbLow:: in the case this is
+greater than your lower bound.
+::
 
 argument:: thetaDirection
 The sweep direction of the plot, code::\cw:: or code::\ccw::, clockwise or
-counter-clockwise, respectively. Default code::\cw::.
+counter-clockwise, respectively.
+
+Default is code::\ccw::.
 
 argument:: thetaZeroPosition
 A radian value or position keyword (code::\top::, code::\botom::, code::\left::,
@@ -65,30 +88,38 @@ code::\right::) specifying the anglular position of code::0::. When setting this
 by a radian value, reference angle code::0:: at the top of the plot (12 o'clock),
 advancing in the direction set by the strong::thetaDirection:: argument.
 
+Default is code::\top::.
+
 argument:: plotRadius
 A value normalized to the radius of the view, where code::1.0:: would extend the
-plot radius to the edge of the view. Default code::0.9::.
-Note::The values of the link::#-thetaGridLines:: displayed in the
+plot radius to the edge of the view. Default is code::0.9::.
+note::
+The text of the link::#-thetaGridLines:: values displayed in the
 link::#-grid:: are drawn just outside the plot's radius, so use a value less
 than code::1.0:: to allow room for these labels if you plan to include labels
-for the theta grid lines.::
+for the theta grid lines.
+::
 
 argument:: dataUnits
 The unit of measurement of your strong::data::: code::\db:: or code::\scalar::.
-Default code::\scalar::. This need not match the strong::plotUnits:: argument,
-which determines the units the data are displayed in.
+Default is code::\scalar::. This need not match the
+strong::plotUnits:: argument, which determines the units the data are displayed
+in.
 
 argument:: plotUnits
 The unit of measurement to emphasis::display:: in the plot: code::\db::
-or code::\scalar::. Defaults to strong::dataUnits::. The data need not be
-provided in the same units as the plot—conversion to the plot's units happens
-internally.
+or code::\scalar::. The source data need not be in the same units as the plot
+display—conversion to the plot's units happens internally.
+
+Defaults to strong::dataUnits::.
 
 argument:: bipolar
 A link::Classes/Boolean:: indicating whether or not the data should be
-displayed as bipolar, i.e. a given dataset contains values that are both
-positive and negative. See link::#-bipolar:: for more details.
-Default is code::false::.
+displayed as bipolar, i.e. the data contains positive and negative values and
+negative values are reflected off of code::0:: and (optionally) plotted as a
+different color than positive values.
+
+Default is code::false::. See link::#-bipolar:: for more details.
 
 
 INSTANCEMETHODS::
@@ -99,7 +130,7 @@ SUBSECTION:: Plot orientation
 
 
 METHOD:: thetaZeroPosition
-Set/get the reference for the angular direction of zero. This angle will be
+Set the reference for the angular direction of zero. This angle will be
 relative to the code::\top:: (12 o'clock) position, and
 the link::#-thetaDirection:: you specify (clockwise or counterclockwise).
 link::#-thetaMin:: is defined relative to this position.
@@ -132,7 +163,7 @@ SUBSECTION:: Grid Lines
 
 
 METHOD:: rhoGridLines
-Set/get the range and interval of rho (latitude) lines on the plot. Return the
+Get/set the range and interval of rho (latitude) lines on the plot. Return the
 calculated rho values with the getter method of the same name.
 
 To set specific rho values, use link::#-rhoGridLinesAt::.
@@ -157,7 +188,7 @@ Default is code::true::.
 
 
 METHOD:: rhoGridLinesAt
-Draw data rho (latitude) grid lines at specific values, as opposed to even
+Set the rho (latitude) grid lines at specific values, as opposed to even
 intervals as in link::#-rhoGridLines::.
 
 argument:: rhoArray
@@ -171,7 +202,7 @@ Default is code::true::.
 
 
 METHOD:: thetaGridLines
-Set the spacing between theta (longitude) grid lines, in radians. Return the
+Get/set the spacing between theta (longitude) grid lines, in radians. Return the
 calculated theta values with the getter method of the same name.
 
 To set specific theta values, use link::#-thetaGridLinesAt::.
@@ -185,7 +216,7 @@ Default is code::true::.
 
 
 METHOD:: thetaGridLinesAt
-Draw theta (longitude) grid lines at specific values, as opposed to even
+Set the theta (longitude) grid lines at specific values, as opposed to even
 intervals as in link::#-thetaGridLines::.
 
 argument:: thetaArray
@@ -207,7 +238,7 @@ SUBSECTION:: Bounds of data display
 
 
 METHOD:: thetaMin
-Set/get the angular position of the plot's minimum bound.
+Set the angular position of the plot's minimum bound.
 
 argument:: radians
 A radian angle, relative to link::#-thetaZeroPosition:: and link::#-thetaDirection::.
@@ -218,7 +249,7 @@ Default is code::true::.
 
 
 METHOD:: thetaRange
-Set/get the sweep length of the plot, starting from link::#-thetaMin::.
+Set the sweep length of the plot, starting from link::#-thetaMin::.
 
 argument:: radians
 Sweep length of the plot, in radians.
@@ -247,7 +278,7 @@ Default is code::true::.
 
 
 METHOD:: rhoMin
-Set the minimum rho values displayed on the plot.
+Get/set the minimum rho values displayed on the plot.
 Data outside this range is clipped. To set both the min and max at the same time,
 it's more efficient to use link::#-rhoMinMax::.
 
@@ -267,7 +298,7 @@ Default is code::true::.
 
 
 METHOD:: rhoMax
-Set the maximum rho values displayed on the plot.
+Get/set the maximum rho values displayed on the plot.
 Data outside this range is clipped. To set both the min and max at the same time,
 it's more efficient to use link::#-rhoMinMax::.
 
@@ -313,8 +344,8 @@ Default is code::true::.
 
 
 METHOD:: rhoWarp
-Get/Set the warp of the rho (radius) domain.
-Note:: Warping your radius domain will also affect your grid lines, so you may
+Set the warp of the rho (radius) domain.
+note:: Warping your radius domain will also affect your grid lines, so you may
 need to follow this setter with link::#-rhoGridLines:: or
 link::#-rhoGridLinesAt:: depending if you prefer specific rho spacing or pixel
 spacing.
@@ -341,7 +372,7 @@ you the actual maximum value of the plot.
 
 
 METHOD:: plotUnits
-Get or set the units used to display the data: code::\db:: or code::\scalar::.
+Get/set the units used to display the data: code::\db:: or code::\scalar::.
 
 The data you set need not match the plot's units, your data
 units are set through the link::#-data:: method, and is converted to the plot's
@@ -358,28 +389,27 @@ The maximum value at which to clip the plot levels, in link::#-plotUnits::.
 
 
 METHOD:: bipolar
-Set the plot to display the absolute value of the data, with negative values
-shown as a different color. In other words, the sign of the
-values is indicated through color—think of the display of a figure-of-eight
-microphone pattern, where positive and negative lobes are different colors.
-Decibel values work as well; internally values will be converted to scalar,
-the absolute value taken, then converted back to dB.
+Get/set the plot to display negative values as reflected off of
+code::0:: (as the absolute value) and, optionally, drawn in a different color.
+E.g. the plot of a figure-of-eight microphone pattern, where positive and
+negative lobes are different colors.
+
 Colors of negative values are set by the
 link::#-plots#negativeColors:: attribute of the link::#-plots:: layer.
-Note:: If you have specified your dataset to have individual colors for each
+note::
+Decibel values work as well; internally values will be converted to scalar,
+the absolute value taken, then converted back to dB.
+::
+note:: If you have specified your dataset to have individual colors for each
 datapoint, this will be ingnored in bipolar mode, and the first color from the
 color array for that dataset is used.::
-
-a given dataset contains values that are both
-positive and negative. , and should be reflected off of a minimum value of
-code::0::, with positive and negative values having different colors. Think of a figure-of-eight microphone pattern, for example.
 
 argument:: bool
 A link::Classes/Boolean:: indicating whether the data should be displayed as
 bipolar or not.
 
 argument:: refresh
-A link::Classes/Boolean::, specifying whether to refresh the view immediately.
+A link::Classes/Boolean:: indicating whether to refresh the view immediately.
 Default is code::true::.
 
 
@@ -394,7 +424,7 @@ catch and clip code::-inf::.  Default code::-90::.
 SUBSECTION:: Setting Plot Data
 
 METHOD:: data
-Set the data to plot.
+Set the plot data.
 
 argument:: dataArray
 An link::Classes/Array:: of values to plot. If the array is 2D, the data is
@@ -402,30 +432,34 @@ considered to be multichannel and will plot the values of each sub-array.
 
 argument:: thetaArray
 An link::Classes/Array:: of values corresponding to angular positions of each
-data point. 2D arrays are treated the same as in strong::dataArray::.
+data point.
 
-If code::thetaArray.size < dataArray.size::, then sub-arrays
-code::dataArray[i]:: are associated with code::thetaArray.wrapAt(i)::.
+If strong::dataArray:: is 2D (multichannel), this argument can also be a 2D
+link::Classes/Array::, assigning each element to its corresponding
+sub-array in strong::dataArray::. If there are fewer elements in
+strong::thetaArray:: than strong::dataArray::, then sub-arrays
+code::dataArray[i]:: are mapped to
+code::thetaArray.wrapAt(i)::.
 
-If the size of each sub-array in strong::thetaArray:: doesn't match the size of
-its associated sub-array in strong::dataArray::, the elements are considered
-breakpoints of an link::Classes/Env::, and the data points are mapped into that
-envelope. For example a strong::dataArray:: of size 100 paired with a
-strong::thetaArray:: of code::[0, 2pi]:: would uniformly distribute all 100 values
-of strong::dataArray:: into the range of code::0:: to code::2pi::.
+If there is not a theta position for every datapoint, the theta positions are
+considered breakpoints of an link::Classes/Env::, and the data points are
+mapped into that envelope. For example a 100-point strong::dataArray:: paired
+with a strong::thetaArray:: of code::[0, 2pi]:: would be uniformly distributed
+through the range of code::0:: to code::2pi::.
 
-If code::nil::, dataArray is mapped evenly into the range
-code::[thetaMin, thetaMax]::.
+If code::nil:: (the default), strong::dataArray:: is mapped evenly into the
+full sweep range code::(thetaMin .. thetaMax)::.
 
 argument:: units
-A link::Classes/Symbol:: indicating the units of the data in strong::dataArray:::
-code::\db:: or code::\scalar::. This is independent of link::#-plotUnits::.
-Default code::\scalar::.
+A link::Classes/Symbol:: indicating the units of the data in
+strong::dataArray::: code::\db:: or code::\scalar::. This is independent of
+link::#-plotUnits::. Default is code::\scalar::.
 
 argument:: bipolar
 A link::Classes/Boolean::, specifying whether the data should be considered
-bipolar, where data is plotted as values, and color indicates polarity/phase.
-See link::#-bipolar::. Default is code::false::.
+bipolar, where data is reflected off code::0::, i.e. plotted as absolute
+values, and color indicates polarity/phase. Default is code::false::.
+See link::#-bipolar::.
 
 argument:: refresh
 A link::Classes/Boolean::, specifying whether to refresh the view immediately.
@@ -443,7 +477,7 @@ argument:: normRadius
 A value in the range code::(0..1)::, which is normalized to the radius of the
 view (the half-length of its smallest side). I.e. code::1.0:: would extend the
 plot radius to the edge of the view. Default code::0.9::.
-Note:: The labels of the link::#-thetaGridLines:: displayed on the edge of the
+note:: The labels of the link::#-thetaGridLines:: displayed on the edge of the
 link::#-grid:: are drawn just outside the plot's radius, so use a value less
 than code::1.0:: to allow room for these labels if you want to include labels
 for the theta grid lines.::
@@ -472,8 +506,9 @@ myPolarPlot.grid.strokeWidth = 2;  // set the stroke width of the grid layer to 
 
 
 METHOD:: grid
-Return the grid line drawing layer (a link::Classes/PolarGridLayer::),
-The grid layer is drawn first (bottommost layer) and has the following attributes:
+Return the grid line drawing layer (a link::Classes/PolarGridLayer::).
+The grid layer is drawn first (bottommost layer) and has the following
+attributes:
 
 table::
 ## strong::attribute:: || strong::default:: || strong::description::
@@ -505,6 +540,7 @@ of the plot, normalized to the radius length
 code::\degrees::, code::\radians::, or code::\pi::
 ## thetaTxtColor  || code::Color.gray.alpha_(0.4):: || the link::Classes/Color:: of the theta grid line values text
 ::
+
 
 METHOD:: plots
 Return the drawing layer responsible for drawing the data plots
@@ -597,7 +633,7 @@ SUBSECTION:: Internal: data
 
 
 METHOD:: scalarData
-Return the plot data in scalar values. I.e. if link::#-data:: was set with
+Get the plot data in scalar values. I.e. if link::#-data:: was set with
 code::\db:: values, link::#-scalarData:: returns code::data.dbamp::.
 
 
@@ -617,7 +653,7 @@ link::#-plotSpec::.
 
 
 METHOD:: thetas
-Return an link::Classes/Array:: of the theta positions of the data points. Used
+Get an link::Classes/Array:: of the theta positions of the data points. Used
 internally and by the drawing layer classes.
 
 
@@ -626,18 +662,18 @@ SUBSECTION:: Internal: layout
 
 
 METHOD:: cen
-Returns a link::Classes/Point:: centered in the area of the view in which the
+Get the link::Classes/Point:: centered in the area of the view in which the
 plot is drawn.
 
 
 METHOD:: bnds
-Returns the link::Classes/Rect:: describing the area of the view in which the
+Get the link::Classes/Rect:: describing the area of the view in which the
 plot is drawn.
 
 
 METHOD:: minDim
-Returns the minimum pixel dimension of the area of the view in which the plot is
-drawn.
+Get the minimum pixel dimension of the area of the view in which the plot is
+drawn. (If the view is rectangular, link::#-minDim:: is the shortest side.)
 
 
 SUBSECTION:: Other
@@ -646,28 +682,29 @@ METHOD:: export
 Export the plot to an image file.
 
 argument:: fileName
-A link::Classes/String:: that is the name of the file, including the extension.
-The extension isn't necessary, but you'll then need to specify the
-strong::format:: and the file will be written without an extension.
+A link::Classes/String:: that is the name of the file.
+If you don't provide a file extension, you'll then need to specify the
+strong::format::.
 
 argument:: directory
-A link::Classes/String:: that is the directory into which the file will be
+A link::Classes/String:: of the directory to which the file will be
 written. Default is the user home directory, code::Platform.userHomeDir::.
 
 argument:: format
-An optional link::Classes/String:: of the format to use.
-code::Image.formats:: lists supported formats.
-If code::nil::, the format will be inferred from the path extension (the
-default).
+An optional link::Classes/String:: of the image format to write.
+
+code::Image.formats:: lists supported formats. If code::nil:: (the default),
+the format will be inferred from the path extension.
 
 argument:: quality
-The quality factor in the range code::0::, small compressed files, to
-code::100::, large uncompressed files, or code::-1::, the default settings.
+The quality factor in the range code::0:: (small compressed files) to
+code::100:: (large uncompressed files) or code::-1::, the default image setting.
+
 Default is code::-1::.
 
 argument:: finishCond
-An optional link::Classes/Condition:: which will be set code::true:: and signal
-when the image has been written.
+An optional link::Classes/Condition:: which will be set code::true:: and
+link::Classes/Condition#-signal#-signal:: when the image has been written.
 
 
 PRIVATE:: prStartAngle, prZeroPos, prRescalePlotData, prPlotRad, prThetaLines, prPlotCen, prSweepLength, drawInThisOrder, defineMouseActions, init, drawFunc, dirFlag, prThetaGridLinesAt, prRhoGridLinesAt, prThetaGridLines, prThetaRange, prPlotBounds, prGetRhoGridLinesFromSpacing, pr ClacDataBounds, prAngInRange, prCalcDataBounds
