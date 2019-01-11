@@ -1378,7 +1378,7 @@ PolarTitleLayer : ValueViewLayer {
 	*properties {
 		^(
 			show:        true,
-			fill:        true,
+			fill:        false,
 			fillColor:   Color.white,
 			txtColor:    Color.gray,
 			inset:       10,    // pixel distance inset from the top of the view
@@ -1386,7 +1386,7 @@ PolarTitleLayer : ValueViewLayer {
 			txt:         "plot",
 			font:        Font("Helvetica"),
 			fontSize:    18,
-			showBorder:  true,
+			showBorder:  false,
 			borderColor: Color.gray,
 			borderWidth: 1,
 		)
