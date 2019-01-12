@@ -591,7 +591,7 @@ table::
 for creating multiple lines
 ## font        || code::Font("Helvetica"):: || title's link::Classes/Font::
 ## fontSize    || code::18:: || title's font size
-## txtColor    || code::Color.gray:: || link::Classes/Color:: of the title text
+## txtColor    || code::Color(0.35, 0.35, 0.35):: || link::Classes/Color:: of the title text
 ## margin      || code::15:: || space between the border of the title box and the text, in pixels
 ## fillColor   || code::Color.white:: || background fill link::Classes/Color:: of the title box
 ## showBorder  || code::true:: || show the title box's border or not
@@ -712,5 +712,54 @@ PRIVATE:: prStartAngle, prZeroPos, prRescalePlotData, prPlotRad, prThetaLines, p
 EXAMPLES::
 
 code::
-(some example code)
+// Sample spherical harmonics on the azimuth plane
+// sum each degree
+(
+var ns, m, theta, phi, data;
+
+n = [1, 4, 7, 11, 14, 17, 20];
+theta = (0.001, 0.021 .. 2pi);
+phi = 0;
+data;
+ns = if (n.isKindOf(Number)) { (0..n) } { n };
+
+data = ns.collect{ |n|
+	m = (n.neg.. n);
+	m.asArray.collect({ |m|
+		theta.collect{ |t|
+			sphericalHarmonicR(n, m, t, phi)
+		}
+	}).sum;
+};
+
+v = PolarPlot( data: data, bipolar: true ).front;
+
+v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size, 1, 1, 1) };
+v.plots.negativeColors = v.plots.plotColors.collect{ |col| col.copy.sat_(0.3) };
+v.legend.show_(true).labels_(ns.collect(_.asString));
+v.title.show_(true).txt_("Spherical harmonics summed by degree\nsampled at the azimuth plane.");
+)
+
+// Sampled exponential cosine function
+(
+var bounds, x, exp, data;
+bounds = [-60, 60].degrad;
+x = Array.interpolation(500, *bounds);
+exp = Array.geom(5, 1, 2);
+data = exp.collect( cos(x).pow(_) );
+
+v = PolarPlot(
+	bounds: Size(550, 300).asRect.center_(Window.screenBounds.center),
+	data: data,
+	thetaArray: x,
+	thetaBounds: bounds,
+	bipolar: true
+).front;
+
+v.grid.thetaTxtWrap = bounds; // center theta text on zero
+v.grid.rhoTxtAng = bounds[1]* 0.8;
+v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size / 1.8, 1, 1) };
+v.title.show_(true).txt_("Exponential cosines");
+v.legend.show_(true).labels_(exp.collect(_.asString)).layout_(\horizontal);
+)
 ::
