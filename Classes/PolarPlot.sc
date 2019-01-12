@@ -43,7 +43,20 @@ PolarPlot : ValuesView {
 	var defaultData = false;
 
 	*new {
-		|parent, bounds, data, thetaArray, thetaBounds = ([0, 2pi]), rhoBounds, thetaDirection = \ccw, thetaZeroPosition = \top, plotRadius = 0.9, dataUnits = \scalar, plotUnits, bipolar = false|
+		arg
+		parent,
+		bounds = ([0, 0, 500, 600].asRect.center_(Window.screenBounds.center)),
+		data,
+		thetaArray,
+		thetaBounds = ([0, 2pi]),
+		rhoBounds,
+		thetaDirection = \ccw,
+		thetaZeroPosition = \top,
+		plotRadius = 0.9,
+		dataUnits = \scalar,
+		plotUnits,
+		bipolar = false;
+
 		^super.new(parent, bounds, [thetaBounds.asSpec], data ?? { [0] }).init(
 			thetaArray, thetaBounds, rhoBounds, thetaDirection, thetaZeroPosition,
 			plotRadius, dataUnits, plotUnits, bipolar, data.notNil
@@ -1135,7 +1148,7 @@ PolarLegendLayer : ValueViewLayer {
 
 	*properties {
 		^(
-			show:        true,
+			show:        false,
 			fillColor:   Color.white,
 			txtColor:    Color.gray,
 			align:       \bottomRight, // right, left, top, bottom, topRight, topLeft, bottomRight, bottomLeft
@@ -1377,10 +1390,10 @@ PolarTitleLayer : ValueViewLayer {
 
 	*properties {
 		^(
-			show:        true,
+			show:        false,
 			fill:        false,
 			fillColor:   Color.white,
-			txtColor:    Color.gray,
+			txtColor:    Color(0.35, 0.35, 0.35),
 			inset:       10,    // pixel distance inset from the top of the view
 			margin:      15,    // margin around text and title border
 			txt:         "plot",
