@@ -78,16 +78,16 @@ PolarPlot : ValuesView {
 		plotRadius = argPlotRadius;
 		plotUnits = argPlotUnits ?? { argDataUnits };
 		thetaDirection = argThetaDirection;
-		dirFlag = switch (thetaDirection, \cw, {1}, \ccw, {-1});
+		dirFlag = switch (thetaDirection, \cw, { 1 }, \ccw, { -1 });
 		thetaZeroPosition = if (argThetaZeroPosition.isKindOf(Number)) {
 			argThetaZeroPosition
 		} {
-			switch(argThetaZeroPosition,
+			switch (argThetaZeroPosition,
 				\top,    { 0 },
 				\bottom, { pi },
-				\left,   { -0.5pi * dirFlag },
-				\right,  { 0.5pi * dirFlag }
-			)
+				\left,   { -0.5pi },
+				\right,  { 0.5pi }
+			) * dirFlag
 		};
 
 		thetaMin = argThetaBounds.minItem;
@@ -514,9 +514,17 @@ PolarPlot : ValuesView {
 
 
 	thetaDirection_ { |direction=\cw, refresh = true|
+		var prevDirFlag = dirFlag.copy;
 		thetaDirection = direction;
-		dirFlag = switch (thetaDirection, \cw, {1}, \ccw, {-1});
-		this.thetaZeroPosition_(thetaZeroPosition, false);  // updates prZeroPos, thetaMin
+		dirFlag = switch (thetaDirection, \cw, { 1 }, \ccw, { -1 });
+		this.thetaZeroPosition_(           // updates prZeroPos, thetaMin
+			if (prevDirFlag != dirFlag) {
+				thetaZeroPosition.neg      // change direction but not zero position
+			} {
+				thetaZeroPosition
+			},
+			false
+		);
 		this.thetaRange_(thetaRange, false);
 		refresh.if{ this.refresh };
 	}
@@ -528,10 +536,10 @@ PolarPlot : ValuesView {
 			radiansOrPosition
 		} {
 			switch(radiansOrPosition,
-				\top, {0}, \bottom, {pi}, \left, {-0.5pi}, \right, {0.5pi}
-			)
+				\top, { 0 }, \bottom, { pi }, \left, { -0.5pi }, \right, { 0.5pi }
+			) * dirFlag
 		};
-		prZeroPos = -0.5pi + thetaZeroPosition; // (thetaZeroPosition * dirFlag);
+		prZeroPos = -0.5pi + (thetaZeroPosition * dirFlag);
 		this.thetaMin_(thetaMin, false);
 		refresh.if{ this.refresh };
 	}
