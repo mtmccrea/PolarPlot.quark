@@ -987,15 +987,20 @@ PolarGridLayer : ValueViewLayer {
 			rhoTxtAng:      0,        // radian angle of rho (latitude) labels, relative to thetaZeroPosition
 			thetaTxtOffset: 0.065,    // percentage of the radius
 			strokeWidth:    1,
-			rhoTxtOrientation: \horizontal,  // \horizontal for always horizontal, \radial to follow the rho line
+			rhoTxtOrientation: \horizontal, // \horizontal for always horizontal, \radial to follow the rho line
 			rhoTxtAlign:    \inside,  // text placement relative to rho grid lines: \inside, \outside, \on
+			fontName:       "Helvetica",
+			fontSize:       0.025,    // font size, < 1 relative to minDim
+
 		)
 	}
 
 	stroke {
-		var rad = view.prPlotRad;
+		var rad, font, theta, thetaMod, anchor;
+		var strs, str, maxStrBnds, strBnds, strRot, wrapBnds;
 
 		Pen.push;
+		rad = view.prPlotRad;
 
 		// background fill of grid
 		if (p.fill) {
@@ -1028,23 +1033,29 @@ PolarGridLayer : ValueViewLayer {
 			Pen.pop;
 		};
 
+		font = Font(
+			p.fontName,
+			if (p.fontSize < 1) { p.fontSize * view.minDim } { p.fontSize }
+		);
+
 		/* rho labels */
 		if (p.showRhoVals) {
-			var str, theta, strBnds, corner, thetaMod, strRot;
-
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 			theta = view.prZeroPos + (p.rhoTxtAng * view.dirFlag);
 			thetaMod = theta % 2pi;
 
+			strs = view.rhoGridLines.round(p.rhoTxtRound).collect(_.asString);
+			maxStrBnds = strs.at(strs.collect(_.size).maxIndex).bounds(font).resizeBy(2, 2).center_(0@0);
+
 			if (p.rhoTxtOrientation == \radial) {
 				strRot = (theta+0.5pi).wrap(-0.5pi, 0.5pi);
 
 				view.rhoGridLinesNorm.do{ |level, i|
-					corner = Polar(level * rad, theta).asPoint;
-					str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
-					strBnds = (str.bounds.asArray + [0,0,2,2]).asRect.center_(0@0);
+					anchor = Polar(level * rad, theta).asPoint; // corner
+					str = strs[i];
+					strBnds = maxStrBnds.copy;
 					if (p.rhoTxtAlign != \on) {
 						if (thetaMod.inRange(0,pi),
 							{   // bottom
@@ -1062,50 +1073,48 @@ PolarGridLayer : ValueViewLayer {
 
 					};
 					Pen.push;
-					Pen.translate(corner.x, corner.y);
+					Pen.translate(anchor.x, anchor.y);
 					Pen.rotate(strRot);
-					Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
+					Pen.stringCenteredIn(str, strBnds, font, p.rhoTxtColor);
 					Pen.pop;
 				};
 			} { // p.rhoTxtOrientation: == \horizontal, or default if invalid
 				view.rhoGridLinesNorm.do{ |level, i|
-					corner = Polar(level * rad, theta).asPoint;
-					str = view.rhoGridLines[i].round(p.rhoTxtRound).asString;
-					strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
+					anchor = Polar(level * rad, theta).asPoint; // corner
+					str = strs[i];
+					strBnds = maxStrBnds.copy;
 
 					if (p.rhoTxtAlign == \on) {
-						strBnds = strBnds.center_(corner);
+						strBnds = strBnds.center_(anchor);
 					} {
 						if (thetaMod.inRange(0,pi),
 							{   // bottom
 								switch(p.rhoTxtAlign,
-									\inside,  { strBnds.bottom_(corner.y) },
-									\outside, { strBnds.top_(corner.y) }
+									\inside,  { strBnds.bottom_(anchor.y) },
+									\outside, { strBnds.top_(anchor.y) }
 								)
 							}, { // top
 								switch(p.rhoTxtAlign,
-									\inside,  { strBnds.top_(corner.y) },
-									\outside, { strBnds.bottom_(corner.y) }
+									\inside,  { strBnds.top_(anchor.y) },
+									\outside, { strBnds.bottom_(anchor.y) }
 								)
 							}
 						);
-
 						if ((thetaMod < 0.5pi) or: { thetaMod > 1.5pi },
 							{   // right side
 								switch(p.rhoTxtAlign,
-									\inside,  { strBnds.right_(corner.x) },
-									\outside, { strBnds.left_(corner.x) }
+									\inside,  { strBnds.right_(anchor.x) },
+									\outside, { strBnds.left_(anchor.x) }
 								)
 							}, { // left side
 								switch(p.rhoTxtAlign,
-									\inside,  { strBnds.left_(corner.x) },
-									\outside, { strBnds.right_(corner.x) }
+									\inside,  { strBnds.left_(anchor.x) },
+									\outside, { strBnds.right_(anchor.x) }
 								)
 							}
 						);
 					};
-
-					Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.rhoTxtColor);
+					Pen.stringCenteredIn(str, strBnds, font, p.rhoTxtColor);
 				};
 			};
 			Pen.pop;
@@ -1114,35 +1123,36 @@ PolarGridLayer : ValueViewLayer {
 
 		/* theta labels */
 		if (p.showThetaVals) {
-			var str, strVal, theta, strBnds, txtCen, thetaMod, wrapBnds, rnd;
-
 			Pen.push;
 			Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 			wrapBnds = p.thetaTxtWrap * 1.001; // prevent edge line labels from wrapping, e.g. 45.degrad.wrap(*[-45, 45].degrad)
-			rnd = p.thetaTxtRound;
 
+			strs = switch(p.thetaTxtUnits,
+				\degrees, {
+					view.thetaGridLines.wrap(*wrapBnds).raddeg.round(p.thetaTxtRound).collect{ |val|
+						if (val % 1 == 0, { val.asInt }, { val }).asString
+					}
+				},
+				\radians, {
+					view.thetaGridLines.wrap(*wrapBnds).round(p.thetaTxtRound).collect{ |val|
+						if (val % 1 == 0, { val.asInt }, { val }).asString
+					}
+				},
+				\pi, {
+					(view.thetaGridLines.wrap(*wrapBnds) / pi).round(p.thetaTxtRound).collect{ |val|
+						val.asString + "π";
+					};
+				}
+			);
+			maxStrBnds = strs.at(strs.collect(_.size).maxIndex).bounds(font).resizeBy(2, 2).center_(0@0);
+			rad = rad * (1 + p.thetaTxtOffset);
 			view.prThetaGridLines.do{ |theta, i|
 				thetaMod = theta % 2pi;
-
-				txtCen = Polar(rad*(1+p.thetaTxtOffset), theta).asPoint;
-				str = switch(p.thetaTxtUnits,
-					\degrees, {
-						strVal = view.thetaGridLines[i].wrap(*wrapBnds).raddeg.round(rnd);
-						if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
-					},
-					\radians, {
-						strVal = view.thetaGridLines[i].wrap(*wrapBnds).round(rnd);
-						if (strVal % 1 == 0, {strVal.asInt}, {strVal}).asString;
-					},
-					\pi, {
-						(view.thetaGridLines[i].wrap(*wrapBnds) / pi).round(rnd) + "π";
-					}
-				);
-				strBnds = (str.bounds.asArray + [0,0,2,2]).asRect;
-				strBnds = strBnds.center_(txtCen);
-
-				Pen.stringCenteredIn(str, strBnds, Font("Helvetica", 12), p.thetaTxtColor);
+				anchor = Polar(rad, theta).asPoint; // center
+				str = strs[i];
+				strBnds = maxStrBnds.copy.center_(anchor);
+				Pen.stringCenteredIn(str, strBnds, font, p.thetaTxtColor);
 			};
 			Pen.pop;
 		};
@@ -1166,8 +1176,8 @@ PolarLegendLayer : ValueViewLayer {
 			layout:      \vertical,    // horizontal, vertical
 			lineLength:  15,           // length of sample plot line
 			lineSpacing: 6,            // spacing between sample line and text
-			font:        Font("Helvetica"),
-			fontSize:    14,
+			fontName:    "Helvetica",
+			fontSize:    0.028,
 			labels:      [],
 			showBorder:  true,
 			borderColor: Color.gray,
@@ -1202,7 +1212,6 @@ PolarLegendLayer : ValueViewLayer {
 			lineCols = view.plots.plotColors.asArray;
 			strokeTypes = view.plots.p.strokeTypes.asArray;
 			pntRad = view.plots.pointRad;
-			// h_2 = txtRects[0].height/2;
 			cRect = [0,0,pntRad*2,pntRad*2].asRect;
 
 			if (strokeTypes.any(_ == \points)) {
@@ -1226,8 +1235,6 @@ PolarLegendLayer : ValueViewLayer {
 					nloops = 1;
 					h_2 = txtRects[0].height/2;
 				};
-
-				// Pen.strokeColor_(lineCols.wrapAt(i));
 
 				if (strokeTypes.wrapAt(i).isKindOf(FloatArray)) {
 					Pen.lineDash_(strokeTypes.wrapAt(i))
@@ -1341,8 +1348,13 @@ PolarLegendLayer : ValueViewLayer {
 			} { // make sure there are labels for all plots
 				p.labels.asArray.extend(nElem, " - ");
 			};
-
-			font = p.font.size_(p.fontSize);
+			font = Font(
+				p.fontName,
+				// p.fontSize
+				// the line below would allow font re-scaling
+				// but makes resizing awkward
+				if (p.fontSize < 1) { p.fontSize * view.minDim } { p.fontSize }
+			);
 			txtRects = labels.collect(_.bounds(font));
 			spacing = p.spacing;
 			margin = p.margin;
@@ -1405,8 +1417,8 @@ PolarTitleLayer : ValueViewLayer {
 			inset:       10,    // pixel distance inset from the top of the view
 			margin:      15,    // margin around text and title border
 			txt:         "plot",
-			font:        Font("Helvetica"),
-			fontSize:    18,
+			fontName:    "Helvetica",
+			fontSize:    0.04,  // font size, < 1 relative to minDim
 			showBorder:  false,
 			borderColor: Color.gray,
 			borderWidth: 1,
@@ -1442,7 +1454,11 @@ PolarTitleLayer : ValueViewLayer {
 	}
 
 	calcBounds {
-		font = p.font.size_(p.fontSize);
+		font = Font(
+			p.fontName,
+			if (p.fontSize < 1) { p.fontSize * min(view.bnds.height, view.bnds.width) } { p.fontSize }
+		);
+
 		// String:-bounds doesn't account for newlines, so add it up
 		txtRect = if (p.txt.contains("\n")) {
 			var rects, w, h;
@@ -1453,6 +1469,7 @@ PolarTitleLayer : ValueViewLayer {
 		} {
 			p.txt.bounds(font)
 		};
+
 		bgRect = txtRect + [0, 0, p.margin, p.margin].asRect;
 		bgRect = bgRect.center_(view.bnds.width/2 @ (bgRect.height/2 + p.inset));
 		txtRect = txtRect.center_(bgRect.center);

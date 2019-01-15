@@ -525,7 +525,9 @@ table::
 
 code::\radial:: to be tangent to the rho line
 ## rhoTxtAlign    || code::\inside:: || text placement relative to rho grid lines: code::\inside::, code::\outside::, code::\on::
-## rhoTxtAng      || code::0:: || the angle to align the text of the rho grid line values
+## rhoTxtAng      || code::0:: || the angle to align the text of the rho grid line values,
+
+relative to link::#-thetaZeroPosition::.
 ## rhoTxtRound    || code::0.01:: || the resolution of the rho grid line values to display
 ## rhoTxtColor    || code::Color.gray.alpha_(0.4):: || the link::Classes/Color:: of the rho grid line values text
 ## thetaTxtRound  || code::1:: || the resolution of the theta grid line values to display
@@ -589,8 +591,10 @@ table::
 ## txt         || code::plot:: || the link::Classes/String:: to display, newline characters, code::"\n"::, are valid
 
 for creating multiple lines
-## font        || code::Font("Helvetica"):: || title's link::Classes/Font::
-## fontSize    || code::18:: || title's font size
+## fontName    || code::"Helvetica":: || title's link::Classes/Font::
+## fontSize    || code::0.05:: || title's font size
+
+unless code::< 1::, then relative to smallest view dimension
 ## txtColor    || code::Color(0.35, 0.35, 0.35):: || link::Classes/Color:: of the title text
 ## margin      || code::15:: || space between the border of the title box and the text, in pixels
 ## fillColor   || code::Color.white:: || background fill link::Classes/Color:: of the title box
@@ -618,8 +622,10 @@ code::\bottom::, code::\topRight::, code::\topLeft::, code::\bottomRight::, code
 ## spacing     || code::8:: || spacing between labels, in pixels
 ## lineLength  || code::15:: || length of the sample lines, in pixels
 ## lineSpacing || code::6:: || spacing between sample line its corresponding label text, in pixels
-## font        || code::Font("Helvetica"):: || link::Classes/Font:: of the labels
-## fontSize    || code::14:: || font size of the labels
+## fontName    || code::"Helvetica":: || link::Classes/Font:: of the labels
+## fontSize    || code::0.028:: || font size of the labels
+
+unless code::< 1::, then relative to smallest view dimension
 ## txtColor    || code::Color.gray:: || link::Classes/Color:: of the text labels
 ## fillColor   || code::Color.white:: || link::Classes/Color:: to fill the background of the legend
 ## showBorder  || code::true:: || show a border around the legend or not
@@ -709,8 +715,9 @@ link::Classes/Condition#-signal#-signal:: when the image has been written.
 
 PRIVATE:: prStartAngle, prZeroPos, prRescalePlotData, prPlotRad, prThetaLines, prPlotCen, prSweepLength, drawInThisOrder, defineMouseActions, init, drawFunc, dirFlag, prThetaGridLinesAt, prRhoGridLinesAt, prThetaGridLines, prThetaRange, prPlotBounds, prGetRhoGridLinesFromSpacing, pr ClacDataBounds, prAngInRange, prCalcDataBounds
 
-EXAMPLES::
+SECTION:: Examples
 
+SUBSECTION:: Example: bipolar plotting
 code::
 // Sample spherical harmonics on the azimuth plane
 // sum each degree
@@ -736,10 +743,13 @@ v = PolarPlot( data: data, bipolar: true ).front;
 
 v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size, 1, 1, 1) };
 v.plots.negativeColors = v.plots.plotColors.collect{ |col| col.copy.sat_(0.3) };
-v.legend.show_(true).labels_(ns.collect(_.asString));
-v.title.show_(true).txt_("Spherical harmonics summed by degree\nsampled at the azimuth plane.");
+v.legend.labels_(ns.collect(_.asString)).show_(true);
+v.title.txt_("Spherical harmonics summed by degree\nsampled at the azimuth plane.").show_(true);
 )
+::
 
+SUBSECTION:: Example: bounded theta range
+code::
 // Sampled exponential cosine function
 (
 var bounds, x, exp, data;
@@ -753,13 +763,60 @@ v = PolarPlot(
 	data: data,
 	thetaArray: x,
 	thetaBounds: bounds,
-	bipolar: true
+	bipolar: false
 ).front;
 
 v.grid.thetaTxtWrap = bounds; // center theta text on zero
-v.grid.rhoTxtAng = bounds[1]* 0.8;
+v.grid.rhoTxtAng = bounds[1] * 0.8;
+v.grid.fontSize = 0.04;
 v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size / 1.8, 1, 1) };
-v.title.show_(true).txt_("Exponential cosines");
-v.legend.show_(true).labels_(exp.collect(_.asString)).layout_(\horizontal);
+v.title.txt_("Exponential cosines").show_(true);
+v.legend.labels_(exp.collect(_.asString)).layout_(\horizontal).show_(true);
+)
+::
+
+SUBSECTION:: Example: line types
+code::
+// Line types
+(
+var x, data;
+x = Array.interpolation(50, 0, 2pi);
+data = x.linlin(0, 2pi, 1, 0);
+data = data.dup(4) * (0.25, 0.5 .. 1);
+
+v = PolarPlot(
+	bounds: Size(600, 600).asRect.center_(Window.screenBounds.center),
+	data: data,
+	thetaArray: x,
+	thetaDirection: \ccw,
+	thetaZeroPosition: \right,
+).front;
+
+v.plots.strokeTypes = [ \line, \points, FloatArray.with(5, 3, 2, 3), \points ];
+v.plots.plotColors = [0, 0.1, 0.3].collect(Color.hsv(_, 1, 1)) ++ [
+	data.last.size.collect{ |i|   // last plot has individual data point colors
+		Color.hsv(i / data.last.size, 1, 1)
+	}
+];
+
+v.title.txt_("Line Types").show_(true);
+v.legend.lineLength_(20).labels_(v.plots.strokeTypes.collect(_.asString)).show_(true);
+)
+::
+
+SUBSECTION:: Fill the plot
+code::
+// Filling the plot
+(
+// oversample functions to multiple "cycles"
+var data = [sinPi((0,0.05 .. 6)), cosPi((0,0.05 .. 6))];
+
+v = PolarPlot(data: data, bipolar: true).front;
+
+v.plots.strokeTypes = \points;
+v.plots.plotColors_(
+	[Color.hsv(0.1, 1, 1, 1), Color.hsv(0.4, 1, 1, 1)]
+).negativeColors_(0.1);
+v.plots.fill = true;
 )
 ::
