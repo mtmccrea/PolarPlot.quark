@@ -45,7 +45,7 @@ PolarPlot : ValuesView {
 	*new {
 		arg
 		parent,
-		bounds = ([0, 0, 500, 600].asRect.center_(Window.screenBounds.center)),
+		bounds = ([0, 0, 500, 550].asRect.center_(Window.screenBounds.center)),
 		data,
 		thetaArray,
 		thetaBounds = ([0, 2pi]),
@@ -71,6 +71,10 @@ PolarPlot : ValuesView {
 			PolarPlotLayer, PolarGridLayer,
 			PolarLegendLayer, PolarTitleLayer
 		].collect({ |class| class.new(this) });
+
+		// give the drawing layers access to this by
+		// adding a 'view' property (used by PolarPlotLayer: dataColors)
+		layers.do{ |layer| layer.p.view = this };
 
 		// unpack the layers list into individual variables
 		#plots, grid, legend, title = layers;
@@ -707,7 +711,6 @@ PolarPlot : ValuesView {
 		maxy = ys.maxItem;
 		width = maxx - minx;
 		height = maxy - miny;
-		// [minx, maxx, miny, maxy, width, height].postln;
 
 		// origin of this rect describes location of plot origin (center)
 		// within the plot bounding rect, from bottom left
@@ -748,7 +751,11 @@ PolarPlotLayer : ValueViewLayer {
 		^(
 			show:        true,
 			fill:        false,        // fill area under the plotted data
-			plotColors:  [Color.blue],
+			dataColors:  { |p|
+				var size;
+				size = p.view.plotData.size;
+				size.collect{ |i| Color.hsv(i / size, 1, 1, 1) };
+			},
 			fillAlpha:   0.3,          // if fill == true, fill the plotColor with this alpha
 			strokeWidth: 2,
 			// NOTE: for some reason, pointRad won't work if listed after 'strokeType': name conflict with strokeType?
@@ -770,8 +777,8 @@ PolarPlotLayer : ValueViewLayer {
 		Pen.translate(view.prPlotCen.x, view.prPlotCen.y);
 
 		// make sure a single color is held in an array
-		if (p.plotColors.isKindOf(Color)) {
-			p.plotColors = [p.plotColors]
+		if (p.dataColors.isKindOf(Color)) {
+			p.dataColors = [p.dataColors]
 		};
 		if (p.strokeTypes.isKindOf(FloatArray)) {
 			// be sure a FloatArray is wrapped into an Array
@@ -873,7 +880,7 @@ PolarPlotLayer : ValueViewLayer {
 			} {
 				/* bipolar = false */
 
-				thisColor = p.plotColors.asArray.wrapAt(i);
+				thisColor = p.dataColors.asArray.wrapAt(i);
 
 				if (p.fill or: { strokeLine }) {
 					// in case colors are specified individually
@@ -939,7 +946,7 @@ PolarPlotLayer : ValueViewLayer {
 		var negColor, posColor;
 
 		^if (sign.isPositive) {
-			posColor = p.plotColors.asArray.wrapAt(chanIdx);
+			posColor = p.dataColors.asArray.wrapAt(chanIdx);
 			// individual colors for each data point isn't supported
 			// in bipolar mode, so just take first color
 			if (posColor.isKindOf(Array)) {
@@ -955,7 +962,7 @@ PolarPlotLayer : ValueViewLayer {
 			} {
 				// negColor is a number, create a Color
 				// with value shift from plotColor
-				posColor = p.plotColors.asArray.wrapAt(chanIdx);
+				posColor = p.dataColors.asArray.wrapAt(chanIdx);
 				if (posColor.isKindOf(Array)) {
 					posColor = posColor[0] // see note in positive case regarding individual colors
 				};
@@ -1209,7 +1216,7 @@ PolarLegendLayer : ValueViewLayer {
 			cursor = 0@0; // reset cursor
 
 			Pen.width = view.plots.strokeWidth;
-			lineCols = view.plots.plotColors.asArray;
+			lineCols = view.plots.dataColors.asArray;
 			strokeTypes = view.plots.p.strokeTypes.asArray;
 			pntRad = view.plots.pointRad;
 			cRect = [0,0,pntRad*2,pntRad*2].asRect;

@@ -7,7 +7,9 @@ DESCRIPTION::
 A radial plot view for viewing data in degrees or radians, (e.g. microphone
 patterns, cylindrical/spherical harmonics, etc.).
 The plot is comprised of multiple layers, each with their own settable
-attributes: grid lines, data plot, title, and legend.
+properties: grid lines, data plot, title, and legend.
+
+See link::#Examples:: for some of the possible plot variations.
 
 
 CLASSMETHODS::
@@ -29,7 +31,7 @@ strong::parent:: view, and its dimensions.
 
 argument:: data
 An link::Classes/Array:: of data to plot. 2D arrays are considered multichannel
-data and plotted separately, each with settable attribute. See the properties
+data and plotted separately, each with settable property. See the properties
 of the link::#-plots:: drawing layer.
 
 argument:: thetaArray
@@ -395,7 +397,9 @@ E.g. the plot of a figure-of-eight microphone pattern, where positive and
 negative lobes are different colors.
 
 Colors of negative values are set by the
-link::#-plots#negativeColors:: attribute of the link::#-plots:: layer.
+link::#-plots#negativeColors:: property of the link::#-plots:: layer.
+
+See link::#Example: bipolar plotting:: and link::#Example: fill the plot::.
 note::
 Decibel values work as well; internally values will be converted to scalar,
 the absolute value taken, then converted back to dB.
@@ -494,10 +498,10 @@ A link::Classes/Color::.
 SUBSECTION:: Fine Tuning Appearance
 
 The plot is comprised of multiple layers, each with their own settable
-attributes: background, scale grid, data plots, title, and legend. Each drawing
+properties: background, scale grid, data plots, title, and legend. Each drawing
 layer has a code::*properties:: list (an link::Classes/Event::), the keys of
 which can be accessed as pseudo-methods for getting and setting their values.
-Setting an attribute automatically refreshes the view. For example:
+Setting an property automatically refreshes the view. For example:
 code::
 // assuming you've created a PolarPlot 'myPolarPlot'
 myPolarPlot.title.show = false;    // hide the title box layer
@@ -508,10 +512,10 @@ myPolarPlot.grid.strokeWidth = 2;  // set the stroke width of the grid layer to 
 METHOD:: grid
 Return the grid line drawing layer (a link::Classes/PolarGridLayer::).
 The grid layer is drawn first (bottommost layer) and has the following
-attributes:
+properties:
 
 table::
-## strong::attribute:: || strong::default:: || strong::description::
+## strong::property:: || strong::default:: || strong::description::
 ## show           || code::true:: || show the grid layer or not
 ## fill           || code::true:: || fill the grid or not
 ## fillColor      || code::Color.white:: || link::Classes/Color:: to fill the grid
@@ -547,17 +551,17 @@ code::\degrees::, code::\radians::, or code::\pi::
 METHOD:: plots
 Return the drawing layer responsible for drawing the data plots
 (a link::Classes/PolarPlotLayer::). The plot layer is drawn drawn over the
-grid layer and has the following attributes:
+grid layer and has the following properties:
 
 table::
-## strong::attribute:: || strong::default:: || strong::description::
+## strong::property:: || strong::default:: || strong::description::
 ## show           || code::true:: || show the plots or not
 ## strokeTypes    || code::[ \line ]:: || an link::Classes/Array:: of code::\line::, code::\points::, or a code::FloatArray:: specifying a
 
 dashed line, e.g. code::FloatArray.with(5, 2, 3, 2):: creates a
 
 dashed line alternating 5px, 3px lines separated by 2px
-## plotColors     || code::[ Color.blue ]:: || an link::Classes/Array:: of link::Classes/Color::s, one for each plot,
+## dataColors     || chromatic|| an link::Classes/Array:: of link::Classes/Color::s, one for each plot,
 
 or an link::Classes/Array:: of link::Classes/Array::s containing link::Classes/Color::s, one for
 
@@ -573,21 +577,25 @@ link::Classes/Number:: which will act as a hue shift by that amount (0..0.999).
 if code::nil::, strong::pointRad:: is strong::strokeWidth::
 ## fillPoints     || code::false:: || if stroke type is code::\points::, fill them or not
 ## fill           || code::false:: || fill the area under the plots or not
-## fillAlpha      || code::0.3:: || an alpha value to apply to the strong::plotColors:: used
+## fillAlpha      || code::0.3:: || an alpha value to apply to the strong::dataColors:: used
 
 to fill the area under each plot
 ::
+See link::#Examples::.
+
 
 METHOD:: title
 Return the drawing layer responsible for drawing the title bar (a
 link::Classes/PolarTitleLayer::), which has
-the following attributes:
+the following properties:
 
 table::
-## strong::attribute:: || strong::default:: || strong::description::
+## strong::property:: || strong::default:: || strong::description::
 ## show        || code::true:: || show the title bar or not
 ## fill        || code::true:: || fill the bakcground of the title bar or not
 ## inset       || code::10:: || space between the title box and the edge of the view, in pixels
+
+unless code::< 1::, then value is scaled by the view height
 ## txt         || code::plot:: || the link::Classes/String:: to display, newline characters, code::"\n"::, are valid
 
 for creating multiple lines
@@ -602,13 +610,15 @@ unless code::< 1::, then relative to smallest view dimension
 ## borderWidth || code::1:: || pixel width of the title border
 ## borderColor || code::Color.gray:: || link::Classes/Color:: of the title border
 ::
+See link::#Examples::.
+
 
 METHOD:: legend
 Return the drawing layer (a link::Classes/PolarLegendLayer::), which has
-the following attributes:
+the following properties:
 
 table::
-## strong::attribute:: || strong::default:: || strong::description::
+## strong::property:: || strong::default:: || strong::description::
 ## show        || code::true:: || show the legend or not
 ## labels      || code::[  ]:: || an link::Classes/Array:: of link::Classes/String::s, one for each data plot, in the order
 
@@ -618,6 +628,8 @@ defined in link::#-data::.
 code::\bottom::, code::\topRight::, code::\topLeft::, code::\bottomRight::, code::\bottomLeft::
 ## layout      || code::\vertical:: || layout of the lines/labels: code::\vertical:: or code::\horizontal::
 ## inset       || code::10:: || space between the legend and the edge of the view, in pixels
+
+unless code::< 1::, then value is scaled by the view's smallest side
 ## margin      || code::10:: || space between the border of the legend and the lines/text, in pixels
 ## spacing     || code::8:: || spacing between labels, in pixels
 ## lineLength  || code::15:: || length of the sample lines, in pixels
@@ -633,6 +645,7 @@ unless code::< 1::, then relative to smallest view dimension
 ## borderColor || code::Color.gray:: || link::Classes/Color:: of the border around the legend
 ::
 
+See link::#Examples::.
 
 
 SUBSECTION:: Internal: data
@@ -741,8 +754,8 @@ data = ns.collect{ |n|
 
 v = PolarPlot( data: data, bipolar: true ).front;
 
-v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size, 1, 1, 1) };
-v.plots.negativeColors = v.plots.plotColors.collect{ |col| col.copy.sat_(0.3) };
+v.plots.dataColors = data.size.collect{ |i| Color.hsv(i / data.size, 1, 1, 1) };
+v.plots.negativeColors = v.plots.dataColors.collect{ |col| col.copy.sat_(0.3) };
 v.legend.labels_(ns.collect(_.asString)).show_(true);
 v.title.txt_("Spherical harmonics summed by degree\nsampled at the azimuth plane.").show_(true);
 )
@@ -750,11 +763,12 @@ v.title.txt_("Spherical harmonics summed by degree\nsampled at the azimuth plane
 
 SUBSECTION:: Example: bounded theta range
 code::
-// Sampled exponential cosine function
 (
 var bounds, x, exp, data;
 bounds = [-60, 60].degrad;
 x = Array.interpolation(500, *bounds);
+
+// sampled exponential cosine function
 exp = Array.geom(5, 1, 2);
 data = exp.collect( cos(x).pow(_) );
 
@@ -769,15 +783,14 @@ v = PolarPlot(
 v.grid.thetaTxtWrap = bounds; // center theta text on zero
 v.grid.rhoTxtAng = bounds[1] * 0.8;
 v.grid.fontSize = 0.04;
-v.plots.plotColors = data.size.collect{ |i| Color.hsv(i / data.size / 1.8, 1, 1) };
-v.title.txt_("Exponential cosines").show_(true);
+v.plots.dataColors = data.size.collect{ |i| Color.hsv(i / data.size / 1.8, 1, 1) };
+v.title.txt_("Exponential cosines").fontSize_(0.07).show_(true);
 v.legend.labels_(exp.collect(_.asString)).layout_(\horizontal).show_(true);
 )
 ::
 
 SUBSECTION:: Example: line types
 code::
-// Line types
 (
 var x, data;
 x = Array.interpolation(50, 0, 2pi);
@@ -793,30 +806,49 @@ v = PolarPlot(
 ).front;
 
 v.plots.strokeTypes = [ \line, \points, FloatArray.with(5, 3, 2, 3), \points ];
-v.plots.plotColors = [0, 0.1, 0.3].collect(Color.hsv(_, 1, 1)) ++ [
+v.plots.dataColors = [0, 0.1, 0.3].collect(Color.hsv(_, 1, 1)) ++ [
 	data.last.size.collect{ |i|   // last plot has individual data point colors
 		Color.hsv(i / data.last.size, 1, 1)
 	}
 ];
 
-v.title.txt_("Line Types").show_(true);
-v.legend.lineLength_(20).labels_(v.plots.strokeTypes.collect(_.asString)).show_(true);
+v.title.txt_("Line Types").fill_(true).showBorder_(true).show_(true);
+v.legend.lineLength_(20).labels_(v.plots.strokeTypes.collect(_.asString));
+v.legend.align_(\bottom).inset_(70).show_(true);
 )
 ::
 
-SUBSECTION:: Fill the plot
+SUBSECTION:: Example: fill the plot
 code::
-// Filling the plot
 (
-// oversample functions to multiple "cycles"
 var data = [sinPi((0,0.05 .. 6)), cosPi((0,0.05 .. 6))];
 
 v = PolarPlot(data: data, bipolar: true).front;
 
 v.plots.strokeTypes = \points;
-v.plots.plotColors_(
+v.plots.dataColors_(
 	[Color.hsv(0.1, 1, 1, 1), Color.hsv(0.4, 1, 1, 1)]
 ).negativeColors_(0.1);
 v.plots.fill = true;
+)
+::
+
+
+SUBSECTION:: Example: plotting in dB
+code::
+(
+var samples = (0,0.002 .. 2); // * pi
+v = PolarPlot(
+	data: [
+		cosPi(samples), // data units are scalar
+		sinPi(samples)
+	],
+	plotUnits: \db,     // plot units are dB
+	bipolar: true
+).front;
+
+v.rhoMin_(-45);         // clip rho range to -45dB
+v.legend.labels_(["cosine", "sine"]).show_(true);
+v.plots.fillAlpha_(0.15).fill_(true);
 )
 ::
