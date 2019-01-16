@@ -11,7 +11,7 @@ not a circle) so plot is maximized no matter the shape, e.g. a semi-circular or 
 
 PolarPlot : ValuesView {
 	// set in drawFunc, for access by drawing layers
-	var <bnds, <cen, <minDim;
+	var <bnds, <cen, <minDim, <titleOffset;
 	// layers
 	var <plots, <grid, <legend, <title;
 	var <thetas, data; // data points and their corresponding theta positions
@@ -128,7 +128,6 @@ PolarPlot : ValuesView {
 	drawFunc {
 		^{  |v|
 			var vw, vh, pw, ph; // view width, height, plot width, height
-			var titleOffset;
 			var plotBnds, plotOrigin, originOffset;
 			var viewHRatio, plotRatio;
 
@@ -164,7 +163,7 @@ PolarPlot : ValuesView {
 				vw / pw * plotRadius;
 			};
 			// center of the view, offset by the title space
-			prPlotCen = Point(cen.x, max(cen.y, titleOffset + (minDim/2)));
+			prPlotCen = Point(cen.x, titleOffset/2 + max(cen.y, minDim/2));
 			// update plot center to be the origin of the plot, which
 			// may not be in the center of the plot's bounding rect
 			originOffset = (
@@ -1198,10 +1197,9 @@ PolarLegendLayer : ValueViewLayer {
 		var cStep, numcSteps, cOff; // for strokeTupe == \points
 
 		block { |break|
-			lRect ?? {break.()}; // bail if background hasn't been calculated
+			lRect ?? { break.() };  // bail if background hasn't been calculated
 
-			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y); // set 0,0 to center
+			// No need to push/translate because that happened in fill {}
 
 			if (p.showBorder) {
 				Pen.width_(p.borderWidth);
@@ -1255,6 +1253,7 @@ PolarLegendLayer : ValueViewLayer {
 							h_2 = h_2 * (j+1);
 							cursor = stcursor;
 							sColor = view.plots.prGetDataColor(1 - (2*j), i);
+
 							// w = margin-lineLength-lineSpacing-text length-spacing-lineLength-lineSpacing-text length-margin, etc
 							if (strokeTypes.wrapAt(i) == \points) {
 								cursor = cursor + (cOff@h_2);
@@ -1334,17 +1333,16 @@ PolarLegendLayer : ValueViewLayer {
 				Pen.pop;
 			};
 			Pen.pop;
-			Pen.pop;
+			Pen.pop; // last pop clears first push in fill {}
 		};
 	}
 
 	fill {
-		var sumW, sumH, spacing, margin;
+		var sumW, sumH, spacing, margin, align, titleOff;
 
 		nElem = view.plotData.size;
 		if (nElem > 0) {
 			Pen.push;
-			Pen.translate(view.cen.x, view.cen.y);
 
 			if (p.labels.isKindOf(String)) {
 				p.labels = [p.labels]
@@ -1357,14 +1355,13 @@ PolarLegendLayer : ValueViewLayer {
 			};
 			font = Font(
 				p.fontName,
-				// p.fontSize
-				// the line below would allow font re-scaling
-				// but makes resizing awkward
 				if (p.fontSize < 1) { p.fontSize * view.minDim } { p.fontSize }
 			);
 			txtRects = labels.collect(_.bounds(font));
 			spacing = p.spacing;
 			margin = p.margin;
+			align = p.align;
+			titleOff = view.titleOffset;
 
 			switch(p.layout,
 				\horizontal, {
@@ -1379,35 +1376,44 @@ PolarLegendLayer : ValueViewLayer {
 				}
 			);
 
-			lRect = [0,0, sumW, sumH].asRect.center_(0@0);
+			if (align.isKindOf(Point)) {
+				Pen.translate(
+					view.bnds.width * align.x,
+					(view.bnds.height - titleOff * align.y) + titleOff
+				);
+				lRect = [0,0, sumW, sumH].asRect.center_(0@0);
+			} {
+				Pen.translate(view.cen.x, view.cen.y);
+				lRect = [0,0, sumW, sumH].asRect.center_(0@(titleOff/2));
 
-			switch(p.align,
-				\right,  {lRect.right = view.bnds.width/2 - p.inset},
-				\left,   {lRect.left = view.bnds.width/2.neg + p.inset},
-				\top,    {lRect.top = view.bnds.height/2.neg + p.inset},
-				\bottom, {lRect.bottom = view.bnds.height/2 - p.inset},
-				\topRight, {
-					lRect.top = view.bnds.height/2.neg + p.inset;
-					lRect.right = view.bnds.width/2 - p.inset;
-				},
-				\topLeft, {
-					lRect.top = view.bnds.height/2.neg + p.inset;
-					lRect.left = view.bnds.width/2.neg + p.inset;
-				},
-				\bottomRight, {
-					lRect.bottom = view.bnds.height/2 - p.inset;
-					lRect.right = view.bnds.width/2 - p.inset;
-				},
-				\bottomLeft, {
-					lRect.bottom = view.bnds.height/2 - p.inset;
-					lRect.left = view.bnds.width/2.neg + p.inset;
-				},
-			);
+				switch (align,
+					\right,  { lRect.right = view.bnds.width/2 - p.inset },
+					\left,   { lRect.left = view.bnds.width/2.neg + p.inset },
+					\top,    { lRect.top = view.bnds.height/2.neg + titleOff + p.inset },
+					\bottom, { lRect.bottom = view.bnds.height/2 - p.inset },
+					\topRight, {
+						lRect.top = view.bnds.height/2.neg + titleOff + p.inset;
+						lRect.right = view.bnds.width/2 - p.inset;
+					},
+					\topLeft, {
+						lRect.top = view.bnds.height/2.neg + titleOff + p.inset;
+						lRect.left = view.bnds.width/2.neg + p.inset;
+					},
+					\bottomRight, {
+						lRect.bottom = view.bnds.height/2 - p.inset;
+						lRect.right = view.bnds.width/2 - p.inset;
+					},
+					\bottomLeft, {
+						lRect.bottom = view.bnds.height/2 - p.inset;
+						lRect.left = view.bnds.width/2.neg + p.inset;
+					},
+				);
+			};
 
 			Pen.fillColor_(p.fillColor);
 			Pen.fillRect(lRect);
-			Pen.fill;
-			Pen.pop;
+
+			// don't pop yet, stroke will immediately follow and pop at the end
 		}
 	}
 }
@@ -1425,7 +1431,7 @@ PolarTitleLayer : ValueViewLayer {
 			margin:      15,    // margin around text and title border
 			txt:         "plot",
 			fontName:    "Helvetica",
-			fontSize:    0.04,  // font size, < 1 relative to minDim
+			fontSize:    0.035,  // font size, < 1 relative to minDim
 			showBorder:  false,
 			borderColor: Color.gray,
 			borderWidth: 1,

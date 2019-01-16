@@ -625,7 +625,11 @@ table::
 defined in link::#-data::.
 ## align       || code::\bottomRight:: || where to align the legend in the view: code::\right::, code::\left::, code::\top::,
 
-code::\bottom::, code::\topRight::, code::\topLeft::, code::\bottomRight::, code::\bottomLeft::
+code::\bottom::, code::\topRight::, code::\topLeft::, code::\bottomRight::, code::\bottomLeft::;
+
+or a link::Classes/Point:: specifying the position of the center of the legend
+
+where code::0@0:: is the top left and code::1@1:: is the bottom right.
 ## layout      || code::\vertical:: || layout of the lines/labels: code::\vertical:: or code::\horizontal::
 ## inset       || code::10:: || space between the legend and the edge of the view, in pixels
 
