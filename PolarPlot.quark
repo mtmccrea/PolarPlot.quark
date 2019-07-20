@@ -6,7 +6,7 @@
        license: "GPL",
        version: "0.1.0",
         schelp: "PolarPlot",
-           url: "https://github.com/ambisonictoolkit/PolarPlot",
+           url: "https://github.com/ambisonictoolkit/PolarPlot.quark",
   dependencies: [
                     "https://github.com/mtmccrea/ValueView.quark"
                 ],
