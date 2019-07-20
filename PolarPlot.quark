@@ -8,7 +8,7 @@
         schelp: "PolarPlot",
            url: "https://github.com/ambisonictoolkit/PolarPlot",
   dependencies: [
-                    "https://github.com/mtmccrea/ValueView"
+                    "https://github.com/mtmccrea/ValueView.quark"
                 ],
   organization: "ATK Community: http://www.ambisonictoolkit.net",
          since: "2018"
