@@ -1137,12 +1137,12 @@ PolarGridLayer : ValueViewLayer {
 			strs = switch(p.thetaTxtUnits,
 				\degrees, {
 					view.thetaGridLines.wrap(*wrapBnds).raddeg.round(p.thetaTxtRound).collect{ |val|
-						if (val % 1 == 0, { val.asInt }, { val }).asString
+						if (val % 1 == 0, { val.asInteger }, { val }).asString
 					}
 				},
 				\radians, {
 					view.thetaGridLines.wrap(*wrapBnds).round(p.thetaTxtRound).collect{ |val|
-						if (val % 1 == 0, { val.asInt }, { val }).asString
+						if (val % 1 == 0, { val.asInteger }, { val }).asString
 					}
 				},
 				\pi, {
@@ -1221,7 +1221,7 @@ PolarLegendLayer : ValueViewLayer {
 
 			if (strokeTypes.any(_ == \points)) {
 				cStep = cRect.width * 3;  // separation between pnts = pnt diam * 5
-				numcSteps = (p.lineLength / cStep).asInt; // how many pnts on the line
+				numcSteps = (p.lineLength / cStep).asInteger; // how many pnts on the line
 				cOff = if (numcSteps > 0) {
 					p.lineLength - (cStep * numcSteps) / 2;
 				} {
