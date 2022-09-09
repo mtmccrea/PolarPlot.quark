@@ -981,7 +981,7 @@ PolarGridLayer : ValueViewLayer {
 			fillColor:      Color.white,
 			showThetaLines: true,
 			showRhoLines:   true,
-			strokeColor:    Color.gray.alpha_(0.4), // grid color
+			strokeColor:    Color.gray.alpha_(0.15), // grid color
 			showThetaVals:  true,
 			showRhoVals:    true,
 			rhoTxtColor:    Color.gray.alpha_(0.4),
